@@ -1,0 +1,1121 @@
+/* ============================================================
+   Power Sim — global styles
+   Aesthetic: industrial control panel, blueprint dark mode,
+              electric cyan accents, IBM Plex typography.
+   ============================================================ */
+
+:root {
+  --bg: #0a0f1a;
+  --bg-elev: #111827;
+  --bg-elev-2: #1a2233;
+  --panel: #0f1623;
+  --border: #1f2a3d;
+  --border-strong: #2a3a52;
+  --text: #d4dce8;
+  --text-dim: #7f8fa6;
+  --text-muted: #4a5670;
+
+  --accent: #22d3ee;
+  --accent-dim: #0e7a8b;
+  --accent-glow: rgba(34, 211, 238, 0.18);
+
+  --good: #4ade80;
+  --warn: #fbbf24;
+  --bad: #f87171;
+  --fault: #ef4444;
+
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.3);
+
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+
+  --radius: 4px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--text);
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  letter-spacing: 0.02em;
+}
+button:hover {
+  background: var(--bg-elev-2);
+  border-color: var(--accent-dim);
+}
+button:active {
+  transform: translateY(1px);
+}
+button.primary {
+  background: linear-gradient(180deg, var(--accent) 0%, var(--accent-dim) 100%);
+  color: #061018;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+button.primary:hover {
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+button.danger {
+  border-color: #5a2a2a;
+  color: var(--bad);
+}
+button.danger:hover {
+  background: #2a1414;
+}
+
+input, select {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  width: 100%;
+}
+input:focus, select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+label {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 500;
+}
+
+/* ===========================================================
+   Layout
+   =========================================================== */
+
+.app {
+  display: grid;
+  grid-template-rows: 48px 1fr;
+  grid-template-columns: 220px 1fr 320px;
+  grid-template-areas:
+    "toolbar toolbar toolbar"
+    "palette canvas props";
+  height: 100vh;
+}
+
+.toolbar {
+  grid-area: toolbar;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  z-index: 10;
+}
+
+.toolbar .brand {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--accent);
+  letter-spacing: 0.06em;
+  margin-right: 8px;
+}
+.toolbar .brand-version {
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.1em;
+}
+
+.toolbar .divider {
+  width: 1px;
+  height: 22px;
+  background: var(--border);
+}
+
+.toolbar .spacer { flex: 1; }
+
+.toolbar .project-name {
+  width: 200px;
+  background: transparent;
+  border: 1px solid transparent;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  text-align: center;
+}
+.toolbar .project-name:hover {
+  border-color: var(--border);
+}
+
+.palette {
+  grid-area: palette;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.palette h3 {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+  padding-left: 4px;
+}
+
+.palette-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elev);
+  margin-bottom: 6px;
+  cursor: grab;
+  transition: all 0.12s ease;
+}
+.palette-item:hover {
+  border-color: var(--accent-dim);
+  background: var(--bg-elev-2);
+}
+.palette-item:active {
+  cursor: grabbing;
+}
+.palette-item-icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+.palette-item-label {
+  font-size: 12px;
+  color: var(--text);
+}
+
+.canvas-area {
+  grid-area: canvas;
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+}
+
+.align-bar {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 5px 10px;
+  box-shadow: var(--shadow-lg);
+  pointer-events: all;
+}
+.align-bar-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  letter-spacing: 0.06em;
+}
+.align-bar-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+}
+.align-bar-btn {
+  font-size: 11px;
+  padding: 3px 8px;
+  background: var(--bg-elev);
+  border-color: var(--border-strong);
+}
+.align-bar-btn:hover {
+  border-color: var(--accent-dim);
+  background: var(--bg-elev-2);
+}
+
+.props {
+  grid-area: props;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.props-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.props-header h2 {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.props-header .badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  padding: 2px 6px;
+  background: var(--bg-elev);
+  border-radius: 2px;
+  letter-spacing: 0.1em;
+}
+
+.props-section {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.props-section:last-child { border-bottom: none; }
+.props-section h4 {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.field {
+  display: grid;
+  grid-template-columns: 1fr 110px;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.props-empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* ===========================================================
+   Results panel (bottom dock)
+   =========================================================== */
+
+.results {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  z-index: 5;
+  max-height: 280px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-lg);
+}
+.results-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elev);
+}
+.results-header h3 {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.results-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px 10px 0;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border);
+}
+.results-tabs button {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 5px 14px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+}
+.results-tabs button:hover {
+  color: var(--text);
+}
+.results-tabs button.active {
+  color: var(--accent);
+  background: var(--panel);
+  border-color: var(--border);
+}
+.results.grading-active {
+  max-height: 470px;
+}
+.tcc-chart {
+  display: block;
+  width: 100%;
+  max-height: 320px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.results-status {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  display: flex;
+  gap: 12px;
+}
+.results-status .ok { color: var(--good); }
+.results-status .fail { color: var(--bad); }
+.results-body {
+  overflow: auto;
+  padding: 0;
+}
+
+table.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+table.results-table th, table.results-table td {
+  padding: 6px 14px;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+}
+table.results-table th {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  font-weight: 600;
+  background: var(--bg-elev);
+  position: sticky;
+  top: 0;
+}
+table.results-table td:first-child, table.results-table th:first-child {
+  text-align: left;
+}
+.tag-ok { color: var(--good); }
+.tag-warn { color: var(--warn); }
+.tag-bad { color: var(--bad); }
+
+.validation-list {
+  padding: 8px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.validation-row {
+  font-size: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.validation-row .tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 2px;
+  letter-spacing: 0.08em;
+  flex-shrink: 0;
+}
+.validation-row.error .tag {
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--bad);
+}
+.validation-row.warning .tag {
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--warn);
+}
+
+/* ===========================================================
+   React Flow overrides — blueprint grid + dark theme
+   =========================================================== */
+
+.react-flow {
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(rgba(34, 211, 238, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 211, 238, 0.04) 1px, transparent 1px);
+  background-size: 8px 8px;
+}
+.react-flow__background { display: none; }
+
+.react-flow__handle {
+  width: 9px;
+  height: 9px;
+  background: var(--bg);
+  border: 1.5px solid var(--accent);
+  border-radius: 50%;
+}
+.react-flow__handle:hover {
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+.react-flow__edge-path {
+  stroke: var(--text-dim);
+  stroke-width: 1.5;
+}
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.react-flow__edge.touching-selected .react-flow__edge-path {
+  stroke: var(--accent);
+  stroke-width: 2;
+  filter: drop-shadow(0 0 4px var(--accent-glow));
+}
+
+/* Edge readout labels (current / power) shown after a load flow run.
+   Rendered through React Flow's EdgeLabelRenderer (absolutely positioned overlays). */
+.edge-readout {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 1px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  white-space: nowrap;
+  letter-spacing: 0.04em;
+  box-shadow: var(--shadow-sm);
+}
+.edge-readout.tone-live { color: var(--accent); border-color: var(--accent-dim); }
+.edge-readout.tone-warn { color: var(--warn); border-color: var(--warn); }
+.edge-readout.tone-bad  { color: var(--bad);  border-color: var(--bad); }
+
+.react-flow__controls {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+.react-flow__controls button {
+  background: transparent;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+.react-flow__controls button:hover {
+  background: var(--bg-elev);
+}
+
+/* ===========================================================
+   Custom nodes (electrical components)
+   =========================================================== */
+
+.node {
+  position: relative;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  min-width: 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+.node.selected {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 0 24px rgba(34, 211, 238, 0.35),
+    inset 0 0 12px rgba(34, 211, 238, 0.08);
+  background: linear-gradient(180deg, rgba(34, 211, 238, 0.06) 0%, var(--bg-elev) 100%);
+}
+.node.busbar.selected .node-symbol {
+  box-shadow: 0 0 12px var(--accent);
+}
+.node.fault {
+  border-color: var(--fault);
+  box-shadow: 0 0 0 1px var(--fault), 0 0 16px rgba(239, 68, 68, 0.4);
+}
+.node-symbol {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.node-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: 0.04em;
+  cursor: text;
+}
+.node-label-edit {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: 0.04em;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  padding: 1px 4px;
+  width: 90%;
+  text-align: center;
+}
+.node-readout {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--accent);
+  background: rgba(34, 211, 238, 0.08);
+  padding: 1px 5px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+.node-readout.warn { color: var(--warn); background: rgba(251, 191, 36, 0.1); }
+.node-readout.bad { color: var(--bad); background: rgba(248, 113, 113, 0.1); }
+
+/* Busbar: a long thin horizontal bar — width comes from style.width (length_px) */
+.node.busbar {
+  min-width: 80px;
+  background: var(--bg-elev-2);
+  border-color: var(--accent-dim);
+  padding: 6px 4px;
+}
+.node.busbar .node-symbol {
+  width: 100%;
+  height: 6px;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: box-shadow 0.15s ease;
+}
+
+.node.switch.open { opacity: 0.5; }
+.node.switch .node-symbol { cursor: pointer; }
+
+.node.fuse.blown { color: var(--bad); }
+.node.fuse.blown .node-symbol { filter: drop-shadow(0 0 4px rgba(248, 113, 113, 0.4)); }
+
+/* Switch, cable, and transformer: rendered inline on the connection wire. The card chrome
+   is hidden, the symbol fills the wrapper top-to-bottom so the React Flow
+   edges blend into the symbol's own wire stubs, and the label + readout
+   float to the right so they don't break the vertical wire flow. The 80px
+   wrapper width is preserved (matches every other component) so existing
+   diagrams keep their alignment. */
+.node.switch, .node.fuse, .node.cable, .node.transformer, .node.ct {
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 0;
+  gap: 0;
+  color: var(--text-dim);
+}
+/* CT clamps directly onto a conductor — hug the 40px symbol so the toroid sits
+   flush on the wire and the control-wire handle starts at the symbol edge. */
+.node.ct {
+  min-width: 40px;
+}
+.node.switch.selected, .node.fuse.selected, .node.cable.selected, .node.transformer.selected, .node.ct.selected {
+  background: rgba(34, 211, 238, 0.06);
+  border-color: var(--accent);
+  border-radius: 2px;
+  color: var(--accent);
+  box-shadow: none;
+}
+.node.switch .node-symbol, .node.fuse .node-symbol, .node.cable .node-symbol, .node.transformer .node-symbol, .node.ct .node-symbol {
+  width: 40px;
+  height: 40px;
+}
+/* CT label/readout float to the LEFT (its control wire exits right). */
+.node.ct .node-label, .node.ct .node-readout {
+  position: absolute;
+  right: calc(50% + 22px);
+  white-space: nowrap;
+  text-align: right;
+}
+.node.ct .node-label { top: calc(50% - 9px); }
+.node.ct .node-readout { top: calc(50% + 4px); }
+.node.switch .node-label, .node.fuse .node-label, .node.cable .node-label, .node.transformer .node-label,
+.node.switch .node-readout, .node.fuse .node-readout, .node.cable .node-readout, .node.transformer .node-readout {
+  position: absolute;
+  left: calc(50% + 22px);
+  white-space: nowrap;
+}
+.node.switch .node-label, .node.fuse .node-label, .node.cable .node-label {
+  top: calc(50% - 9px);
+}
+.node.switch .node-readout, .node.fuse .node-readout, .node.cable .node-readout {
+  top: calc(50% + 4px);
+}
+/* Transformer is rendered slightly larger than other inline symbols — it's a
+   significant piece of equipment — so its symbol container is 52px and the
+   side labels are nudged right to clear the wider symbol. Three lines stack
+   beside the symbol: label, voltage ratio, readout. */
+.node.transformer .node-symbol {
+  width: 52px;
+  height: 52px;
+}
+.node.transformer .node-label,
+.node.transformer .node-ratio,
+.node.transformer .node-readout,
+.node.transformer .node-label-edit {
+  left: calc(50% + 30px);
+}
+.node.transformer .node-label {
+  top: calc(50% - 18px);
+}
+.node.transformer .node-ratio {
+  position: absolute;
+  top: calc(50% - 4px);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.node.transformer .node-readout {
+  top: calc(50% + 10px);
+}
+.node.switch .node-label-edit, .node.fuse .node-label-edit, .node.cable .node-label-edit, .node.transformer .node-label-edit {
+  position: absolute;
+  left: calc(50% + 22px);
+  top: calc(50% - 11px);
+  width: 80px;
+}
+
+/* Right-click context menu (canvas nodes) */
+.context-menu {
+  position: absolute;
+  z-index: 20;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  min-width: 120px;
+}
+.context-menu-item {
+  background: transparent;
+  border: none;
+  padding: 6px 10px;
+  text-align: left;
+  color: var(--text);
+  font-size: 12px;
+  border-radius: 2px;
+  cursor: pointer;
+}
+.context-menu-item:hover {
+  background: var(--bg-elev-2);
+  border: none;
+}
+.context-menu-item.danger {
+  color: var(--bad);
+}
+.context-menu-item.danger:hover {
+  background: rgba(248, 113, 113, 0.1);
+}
+
+/* Modal */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  min-width: 360px;
+  box-shadow: var(--shadow-lg);
+}
+.modal h2 {
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+.modal .actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+/* Synthetic bus dot — placed on a wire where no real busbar exists.
+   Clickable to select as a short-circuit fault target. */
+.synth-bus {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+  user-select: none;
+  pointer-events: auto;
+}
+.synth-bus-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--accent-dim), 0 0 6px var(--accent-glow);
+  transition: all 0.15s ease;
+}
+.synth-bus:hover .synth-bus-dot {
+  box-shadow: 0 0 0 1px var(--accent), 0 0 10px var(--accent-glow);
+  transform: scale(1.15);
+}
+.synth-bus.selected .synth-bus-dot {
+  box-shadow: 0 0 0 2px var(--accent), 0 0 12px var(--accent-glow);
+}
+.synth-bus.fault .synth-bus-dot {
+  background: var(--fault);
+  box-shadow: 0 0 0 2px var(--fault), 0 0 14px rgba(239, 68, 68, 0.45);
+}
+.synth-bus-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  background: var(--bg);
+  padding: 0 4px;
+  border-radius: 2px;
+  white-space: nowrap;
+  letter-spacing: 0.03em;
+}
+.synth-bus.fault .synth-bus-label {
+  color: var(--fault);
+}
+.synth-bus-readout {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--accent);
+  background: rgba(34, 211, 238, 0.08);
+  padding: 0 4px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+.synth-bus-readout.warn { color: var(--warn); background: rgba(251, 191, 36, 0.1); }
+.synth-bus-readout.bad  { color: var(--bad);  background: rgba(248, 113, 113, 0.1); }
+
+/* ===========================================================
+   Explain mode — pill toggles, inline underlines, tooltips,
+   info icons, glossary drawer, animation player.
+   =========================================================== */
+
+.toolbar button.pill {
+  font-size: 11px;
+  padding: 3px 9px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  color: var(--text-dim);
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+}
+.toolbar button.pill:hover {
+  border-color: var(--accent-dim);
+  color: var(--text);
+}
+.toolbar button.pill.on {
+  background: rgba(34, 211, 238, 0.12);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.explain-wrap {
+  border-bottom: 1px dotted var(--accent-dim);
+  cursor: help;
+  outline: none;
+}
+.explain-wrap:focus-visible {
+  border-bottom-color: var(--accent);
+  box-shadow: 0 1px 0 0 var(--accent);
+}
+
+.explain-info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: var(--bg-elev);
+  border: 1px solid var(--accent-dim);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  font-style: italic;
+  cursor: help;
+  user-select: none;
+  vertical-align: middle;
+  line-height: 1;
+}
+.explain-info:hover, .explain-info:focus {
+  background: var(--accent);
+  color: var(--bg);
+  outline: none;
+}
+
+.explain-tooltip {
+  z-index: 200;
+  max-width: 320px;
+  background: var(--panel);
+  border: 1px solid var(--accent-dim);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+  pointer-events: none;
+  line-height: 1.45;
+}
+.explain-tooltip-title {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--accent);
+  margin-bottom: 4px;
+  letter-spacing: 0.02em;
+}
+.explain-tooltip-body {
+  color: var(--text);
+}
+.explain-tooltip-formula {
+  margin-top: 6px;
+  padding: 4px 8px;
+  background: var(--bg);
+  border-left: 2px solid var(--accent-dim);
+  border-radius: 2px;
+}
+.explain-tooltip-formula code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  white-space: pre-wrap;
+}
+.explain-tooltip-meta {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* Busbar base-impedance overlay (under the label, Explain mode on) */
+.node-base-overlay {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+/* Glossary drawer (slide-out right panel) */
+.glossary-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 150;
+}
+.glossary-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 460px;
+  max-width: 95vw;
+  background: var(--panel);
+  border-left: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-lg);
+  z-index: 151;
+  display: flex;
+  flex-direction: column;
+}
+.glossary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elev);
+}
+.glossary-header h2 {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+.glossary-close {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+}
+.glossary-body {
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+.glossary-section {
+  margin-bottom: 22px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+.glossary-section:last-child {
+  border-bottom: none;
+}
+.glossary-section h3 {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+.glossary-section p {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.glossary-formula {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--accent);
+  background: var(--bg);
+  border-left: 2px solid var(--accent-dim);
+  padding: 6px 10px;
+  margin-top: 6px;
+  border-radius: 2px;
+  white-space: pre-wrap;
+}
+
+/* Animation player (inside Results panel) */
+.anim-player {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elev);
+}
+.anim-player button {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px 10px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border-strong);
+}
+.anim-player button.primary {
+  background: linear-gradient(180deg, var(--accent) 0%, var(--accent-dim) 100%);
+  color: #061018;
+  border-color: var(--accent);
+}
+.anim-player .anim-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  min-width: 220px;
+}
+.anim-player input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+  background: transparent;
+  border: none;
+}
+.anim-chart {
+  height: 36px;
+  flex: 1;
+  max-width: 220px;
+}
+
+/* Pu/kV conversion hint (Explain mode on, inline in result rows) */
+.explain-hint {
+  margin-left: 6px;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Examples dropdown */
+.examples-menu {
+  position: absolute;
+  top: 40px;
+  left: 8px;
+  z-index: 50;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  min-width: 280px;
+  padding: 4px;
+}
+.examples-menu .examples-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  background: transparent;
+  border: none;
+  padding: 8px 10px;
+  text-align: left;
+  border-radius: 2px;
+  width: 100%;
+  cursor: pointer;
+  color: var(--text);
+}
+.examples-menu .examples-item:hover {
+  background: var(--bg-elev-2);
+}
+.examples-menu .examples-name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent);
+}
+.examples-menu .examples-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+}

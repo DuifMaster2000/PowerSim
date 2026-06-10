@@ -1,0 +1,83 @@
+import type { ProjectFile } from "../types";
+
+export const meshLoop: ProjectFile = {
+  version: "1.0",
+  metadata: { name: "Mesh loop", created: "2026-05-25", modified: "2026-05-25" },
+  system: { base_mva: 50, frequency_hz: 50 },
+  components: [
+    {
+      id: "SRC-1",
+      type: "grid_source",
+      label: "GRID",
+      position: { x: 240, y: 20 },
+      parameters: { nominal_voltage_kv: 33, short_circuit_mva: 1500, xr_ratio: 12, scheduled_mw: 0 },
+    },
+    {
+      id: "BB-1",
+      type: "busbar",
+      label: "BUS-A",
+      position: { x: 180, y: 120 },
+      parameters: { nominal_voltage_kv: 33, length_px: 200 },
+    },
+    {
+      id: "BB-2",
+      type: "busbar",
+      label: "BUS-B",
+      position: { x: 20, y: 320 },
+      parameters: { nominal_voltage_kv: 33, length_px: 200 },
+    },
+    {
+      id: "BB-3",
+      type: "busbar",
+      label: "BUS-C",
+      position: { x: 360, y: 320 },
+      parameters: { nominal_voltage_kv: 33, length_px: 200 },
+    },
+    {
+      id: "CBL-1",
+      type: "cable",
+      label: "A-B",
+      position: { x: 100, y: 220 },
+      parameters: { resistance_ohm_per_km: 0.14, reactance_ohm_per_km: 0.32, length_m: 3500, ampacity_a: 400 },
+    },
+    {
+      id: "CBL-2",
+      type: "cable",
+      label: "A-C",
+      position: { x: 360, y: 220 },
+      parameters: { resistance_ohm_per_km: 0.14, reactance_ohm_per_km: 0.32, length_m: 4000, ampacity_a: 400 },
+    },
+    {
+      id: "CBL-3",
+      type: "cable",
+      label: "B-C",
+      position: { x: 240, y: 420 },
+      parameters: { resistance_ohm_per_km: 0.14, reactance_ohm_per_km: 0.32, length_m: 5000, ampacity_a: 400 },
+    },
+    {
+      id: "LD-1",
+      type: "load",
+      label: "LD-B",
+      position: { x: 60, y: 420 },
+      parameters: { active_power_kw: 9000, reactive_power_kvar: 3000 },
+    },
+    {
+      id: "LD-2",
+      type: "load",
+      label: "LD-C",
+      position: { x: 420, y: 420 },
+      parameters: { active_power_kw: 11000, reactive_power_kvar: 3500 },
+    },
+  ],
+  connections: [
+    { id: "conn-1", fromComponent: "SRC-1", fromTerminal: "out", toComponent: "BB-1", toTerminal: "top" },
+    { id: "conn-2", fromComponent: "BB-1", fromTerminal: "bottom", toComponent: "CBL-1", toTerminal: "from" },
+    { id: "conn-3", fromComponent: "CBL-1", fromTerminal: "to", toComponent: "BB-2", toTerminal: "top" },
+    { id: "conn-4", fromComponent: "BB-1", fromTerminal: "bottom", toComponent: "CBL-2", toTerminal: "from" },
+    { id: "conn-5", fromComponent: "CBL-2", fromTerminal: "to", toComponent: "BB-3", toTerminal: "top" },
+    { id: "conn-6", fromComponent: "BB-2", fromTerminal: "bottom", toComponent: "CBL-3", toTerminal: "from" },
+    { id: "conn-7", fromComponent: "CBL-3", fromTerminal: "to", toComponent: "BB-3", toTerminal: "bottom" },
+    { id: "conn-8", fromComponent: "BB-2", fromTerminal: "bottom", toComponent: "LD-1", toTerminal: "in" },
+    { id: "conn-9", fromComponent: "BB-3", fromTerminal: "bottom", toComponent: "LD-2", toTerminal: "in" },
+  ],
+};
