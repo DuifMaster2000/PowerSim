@@ -99,10 +99,22 @@ export type RelayModel = "generic" | "ABB-REM615";
 
 export interface RelayParams {
   relay_model: RelayModel;
+  // Stage 1 — low stage 3I> (PHLPTOC, "51")
   curve: IdmtCurve;
   plug_setting: number;     // pickup as a multiple of the CT secondary (Is/In), e.g. 1.0
   time_multiplier: number;  // TMS — scales the whole IDMT curve
   definite_time_s: number;  // operate time used when curve === "DT"
+  // Stage 2 — high stage 3I>> (PHHPTOC, "50/51"). Multi-stage models only;
+  // the relay trips on whichever enabled stage operates fastest.
+  stage2_enabled: boolean;
+  stage2_pickup: number;    // ×In, 0.10–40.00
+  stage2_curve: IdmtCurve;
+  stage2_tms: number;
+  stage2_time_s: number;    // DT operate time when stage2_curve === "DT"
+  // Stage 3 — instantaneous stage 3I>>> (PHIPTOC, "50"). Definite time only.
+  stage3_enabled: boolean;
+  stage3_pickup: number;    // ×In, 1.00–40.00
+  stage3_time_s: number;    // ≥ 0.02 s
   // The connection (conductor) whose CT this relay measures. Picked from a
   // dropdown of CT-equipped wires in the relay's properties panel. null when
   // the relay has no CT assigned yet (surfaces a warning).

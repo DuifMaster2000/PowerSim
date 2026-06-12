@@ -239,6 +239,12 @@ Relays now carry a **hardware model** that constrains their settings to what the
 - New `IdmtCurve` value `"ABB-RI"`: t = k / (0.339 − 0.236/m) in `idmt.ts` — flattens toward ~2.95·k at high multiples (grades against old ABB disc relays). Excluded from `IEC_CONSTANTS` typing.
 - **PropertiesPanel**: "Relay type" select; `applyRelayModel` rewrites the curve options and numeric min/max per model. Switching model **clamps** out-of-range settings and resets unavailable curves to IEC-SI; relay numeric inputs re-seed via React key on model change. Validation message now states the actual minimum (`Must be ≥ x`).
 
+**Multi-stage overcurrent (REM615):**
+- `RelayModelSpec.stages: 1 | 3`. The REM615 models all three Relion phase stages as flat `RelayParams` fields: stage 1 = existing `curve`/`plug_setting`/`time_multiplier`/`definite_time_s` (3I>, PHLPTOC); `stage2_*` = 3I>> high stage (PHHPTOC, 0.10–40 ×In, IDMT or DT); `stage3_*` = 3I>>> instantaneous (PHIPTOC, 1–40 ×In, DT only, ≥0.02 s). All have legacy `??` fallbacks (disabled by default).
+- `idmtOperateTime` returns **min over enabled stages** (a real relay trips on the fastest stage); `idmtCurvePoints` samples extra point pairs straddling each enabled pickup so the composite renders crisp vertical steps. `relayHighestPickupA` extends the chart's current axis to cover the instantaneous step.
+- PropertiesPanel: stage fields show only on multi-stage models (`relayFieldVisible`); per-stage timing fields follow the stage's curve type (TMS for IDMT, time for DT — applied to stage 1 too). Stage enables render Enabled/Disabled. Switching to a 1-stage model **force-disables stages 2/3** so hidden stages can't shape the curve.
+- Grading legend tags multi-stage relays (e.g. `RLY-01 · 3-stage Standard Inverse`).
+
 ---
 
 ## Known limitations / v0.5 candidates

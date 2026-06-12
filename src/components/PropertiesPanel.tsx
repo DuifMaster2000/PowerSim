@@ -216,11 +216,21 @@ const FIELDS: { [K in ComponentType]: FieldDef[] } = {
       optionLabels: Object.values(RELAY_MODELS).map((m) => m.label),
     },
     // curve / plug_setting / time_multiplier / definite_time_s ranges and the
-    // available curve set are filled in per relay model — see applyRelayModel.
-    { key: "curve", label: "Curve", type: "select", options: [] },
-    { key: "plug_setting", label: "Plug setting", unit: "×In", type: "number", step: 0.05 },
-    { key: "time_multiplier", label: "Time multiplier (TMS)", type: "number", step: 0.05 },
-    { key: "definite_time_s", label: "Definite time", unit: "s", type: "number", step: 0.05 },
+    // available curve sets are filled in per relay model — see applyRelayModel.
+    { key: "curve", label: "3I> curve", type: "select", options: [] },
+    { key: "plug_setting", label: "3I> pickup", unit: "×In", type: "number", step: 0.05 },
+    { key: "time_multiplier", label: "3I> TMS", type: "number", step: 0.05 },
+    { key: "definite_time_s", label: "3I> time", unit: "s", type: "number", step: 0.05 },
+    // High stage 3I>> (PHHPTOC) — multi-stage models only.
+    { key: "stage2_enabled", label: "High stage (3I>>)", type: "boolean" },
+    { key: "stage2_curve", label: "3I>> curve", type: "select", options: [] },
+    { key: "stage2_pickup", label: "3I>> pickup", unit: "×In", type: "number", step: 0.1, min: 0.1, max: 40 },
+    { key: "stage2_tms", label: "3I>> TMS", type: "number", step: 0.05, min: 0.05, max: 15 },
+    { key: "stage2_time_s", label: "3I>> time", unit: "s", type: "number", step: 0.05, min: 0.04, max: 200 },
+    // Instantaneous stage 3I>>> (PHIPTOC) — definite time only.
+    { key: "stage3_enabled", label: "Inst. stage (3I>>>)", type: "boolean" },
+    { key: "stage3_pickup", label: "3I>>> pickup", unit: "×In", type: "number", step: 0.5, min: 1, max: 40 },
+    { key: "stage3_time_s", label: "3I>>> time", unit: "s", type: "number", step: 0.01, min: 0.02, max: 200 },
   ],
 };
 
@@ -230,6 +240,7 @@ function applyRelayModel(fields: FieldDef[], model: RelayModel): FieldDef[] {
   return fields.map((f) => {
     switch (f.key) {
       case "curve":
+      case "stage2_curve":
         return { ...f, options: spec.curves, optionLabels: spec.curves.map((c) => CURVE_LABELS[c]) };
       case "plug_setting":
         return { ...f, min: spec.plugMin, max: spec.plugMax, step: spec.plugStep };
@@ -241,6 +252,22 @@ function applyRelayModel(fields: FieldDef[], model: RelayModel): FieldDef[] {
         return f;
     }
   });
+}
+
+// Which relay fields are visible, given the model and the current params.
+// Stage 2/3 exist only on multi-stage models; per-stage timing fields follow
+// the stage's curve type (TMS for IDMT curves, time for DT).
+function relayFieldVisible(f: FieldDef, params: Record<string, unknown>): boolean {
+  const model = (params.relay_model as RelayModel) ?? "generic"; // legacy pre-v0.10 relays
+  const multiStage = (RELAY_MODELS[model] ?? RELAY_MODELS.generic).stages === 3;
+  if (f.key === "definite_time_s" && params.curve !== "DT") return false;
+  if (f.key === "time_multiplier" && params.curve === "DT") return false;
+  if (f.key.startsWith("stage") && !multiStage) return false;
+  if (["stage2_curve", "stage2_pickup", "stage2_tms", "stage2_time_s"].includes(f.key) && !params.stage2_enabled) return false;
+  if (f.key === "stage2_tms" && params.stage2_curve === "DT") return false;
+  if (f.key === "stage2_time_s" && params.stage2_curve !== "DT") return false;
+  if (["stage3_pickup", "stage3_time_s"].includes(f.key) && !params.stage3_enabled) return false;
+  return true;
 }
 
 function validateField(f: FieldDef, value: number): string | null {
@@ -313,13 +340,12 @@ export function PropertiesPanel() {
   }
 
   const params = comp.parameters as unknown as Record<string, unknown>;
-  let fields = FIELDS[comp.type].filter((f) => {
-    // Definite-time field only applies to the DT curve; hide it otherwise.
-    if (comp.type === "relay" && f.key === "definite_time_s" && params.curve !== "DT") return false;
-    return true;
-  });
+  let fields = FIELDS[comp.type];
   if (comp.type === "relay") {
-    fields = applyRelayModel(fields, (params.relay_model as RelayModel) ?? "generic"); // legacy pre-v0.10 relays
+    fields = applyRelayModel(
+      fields.filter((f) => relayFieldVisible(f, params)),
+      (params.relay_model as RelayModel) ?? "generic", // legacy pre-v0.10 relays
+    );
   }
 
   const handleNumberChange = (f: FieldDef, raw: string) => {
@@ -382,6 +408,11 @@ export function PropertiesPanel() {
                       <option value="true">Intact</option>
                       <option value="false">Blown</option>
                     </>
+                  ) : comp.type === "relay" ? (
+                    <>
+                      <option value="true">Enabled</option>
+                      <option value="false">Disabled</option>
+                    </>
                   ) : (
                     <>
                       <option value="true">Closed</option>
@@ -407,7 +438,9 @@ export function PropertiesPanel() {
                       updateComponentParams(comp.id, { rated_current_a: parseFloat(v) } as any);
                     } else if (comp.type === "relay" && f.key === "relay_model") {
                       // Switching hardware clamps the settings into the new
-                      // model's ranges and drops curves it doesn't offer.
+                      // model's ranges, drops curves it doesn't offer, and
+                      // switches off stages the model doesn't have (otherwise
+                      // hidden-but-enabled stages would still shape the curve).
                       const spec = RELAY_MODELS[v as RelayModel];
                       const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
                       updateComponentParams(comp.id, {
@@ -416,6 +449,8 @@ export function PropertiesPanel() {
                         time_multiplier: clamp(params.time_multiplier as number, spec.tmsMin, spec.tmsMax),
                         definite_time_s: clamp(params.definite_time_s as number, spec.dtMin, spec.dtMax),
                         ...(spec.curves.includes(params.curve as IdmtCurve) ? {} : { curve: "IEC-SI" as IdmtCurve }),
+                        ...(spec.stages === 1 ? { stage2_enabled: false, stage3_enabled: false } : {}),
+                        ...(spec.curves.includes((params.stage2_curve as IdmtCurve) ?? "DT") ? {} : { stage2_curve: "DT" as IdmtCurve }),
                       } as any);
                     } else {
                       updateComponentParams(comp.id, { [f.key]: v } as any);

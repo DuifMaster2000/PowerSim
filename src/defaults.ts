@@ -16,6 +16,8 @@ export interface RelayModelSpec {
   dtMin: number;
   dtMax: number;
   curves: IdmtCurve[];
+  // 1 = single IDMT stage; 3 = low + high + instantaneous (3I> / 3I>> / 3I>>>)
+  stages: 1 | 3;
 }
 
 export const RELAY_MODELS: Record<RelayModel, RelayModelSpec> = {
@@ -26,15 +28,19 @@ export const RELAY_MODELS: Record<RelayModel, RelayModelSpec> = {
     tmsMin: 0.025, tmsMax: 1.5,
     dtMin: 0.01, dtMax: 100,
     curves: ["IEC-SI", "IEC-VI", "IEC-EI", "IEC-LTI", "DT"],
+    stages: 1,
   },
-  // ABB Relion 615 series, phase overcurrent low stage (PHLPTOC "51"):
-  // start value 0.05–5.00 ×In, time multiplier 0.05–15.0, DT 0.04–200 s.
+  // ABB Relion 615 series, phase overcurrent stages:
+  //   3I>   PHLPTOC  start 0.05–5.00 ×In, TMS 0.05–15.0, DT 0.04–200 s
+  //   3I>>  PHHPTOC  start 0.10–40.00 ×In, IDMT or DT
+  //   3I>>> PHIPTOC  start 1.00–40.00 ×In, DT only, ≥0.02 s
   "ABB-REM615": {
     label: "ABB REM615 (Relion)",
     plugMin: 0.05, plugMax: 5, plugStep: 0.05,
     tmsMin: 0.05, tmsMax: 15,
     dtMin: 0.04, dtMax: 200,
     curves: ["IEC-SI", "IEC-VI", "IEC-EI", "IEC-LTI", "ABB-RI", "DT"],
+    stages: 3,
   },
 };
 
@@ -142,6 +148,14 @@ export const DEFAULT_PARAMS: { [K in ComponentType]: ParamsByType[K] } = {
     plug_setting: 1.0,
     time_multiplier: 0.1,
     definite_time_s: 0.5,
+    stage2_enabled: false,
+    stage2_pickup: 5.0,
+    stage2_curve: "DT",
+    stage2_tms: 0.1,
+    stage2_time_s: 0.3,
+    stage3_enabled: false,
+    stage3_pickup: 20.0,
+    stage3_time_s: 0.05,
     measured_connection_id: null,
   },
 };

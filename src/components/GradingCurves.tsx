@@ -20,6 +20,7 @@ import {
   fuseTccPoints,
   idmtOperateTime,
   primaryPickupA,
+  relayHighestPickupA,
   motorStartCurvePoints,
   cableDamageCurvePoints,
   transformerDamageCurvePoints,
@@ -175,8 +176,10 @@ export function GradingCurves() {
   let maxI = 1000;
   for (const e of entries) {
     if (e.kind === "relay") {
-      const pickup = primaryPickupA(e.device.parameters as RelayParams, getRelayLinks(e.device.id).ct);
-      maxI = Math.max(maxI, pickup * 30);
+      const links = getRelayLinks(e.device.id);
+      const pickup = primaryPickupA(e.device.parameters as RelayParams, links.ct);
+      const highest = relayHighestPickupA(e.device.parameters as RelayParams, links.ct);
+      maxI = Math.max(maxI, pickup * 30, highest * 2);
     } else if (e.kind === "fuse") {
       maxI = Math.max(maxI, (e.device.parameters as FuseParams).rated_current_a * 30);
     } else if (e.kind === "motor") {
@@ -206,11 +209,13 @@ export function GradingCurves() {
     const c = e.device;
     if (e.kind === "relay") {
       const links = getRelayLinks(c.id);
-      const pts = idmtCurvePoints(c.parameters as RelayParams, links.ct, iMax, tMax, tMin);
+      const rp = c.parameters as RelayParams;
+      const pts = idmtCurvePoints(rp, links.ct, iMax, tMax, tMin);
       if (pts.length === 0) continue;
+      const stageCount = 1 + ((rp.stage2_enabled ?? false) ? 1 : 0) + ((rp.stage3_enabled ?? false) ? 1 : 0);
       curves.push({
         id: c.id,
-        label: `${c.label}${e.via ? ` (${e.via})` : ""} · ${CURVE_LABELS[(c.parameters as RelayParams).curve]}`,
+        label: `${c.label}${e.via ? ` (${e.via})` : ""} · ${stageCount > 1 ? `${stageCount}-stage ` : ""}${CURVE_LABELS[rp.curve]}`,
         color: e.color,
         dash: DASH.relay,
         points: pts,
