@@ -6,8 +6,8 @@
 
 import { useState, useEffect } from "react";
 import { useStore, isControlConnection } from "../store";
-import { COMPONENT_LABELS, STARTING_PF_DEFAULTS, STANDARD_FUSE_SIZES_A, CURVE_LABELS, DEFAULT_CT_PARAMS } from "../defaults";
-import type { PowerComponent, ComponentType, MotorStartingMethod, RelayParams } from "../types";
+import { COMPONENT_LABELS, STARTING_PF_DEFAULTS, STANDARD_FUSE_SIZES_A, CURVE_LABELS, DEFAULT_CT_PARAMS, RELAY_MODELS } from "../defaults";
+import type { PowerComponent, ComponentType, MotorStartingMethod, RelayParams, RelayModel, IdmtCurve } from "../types";
 import { Explain, Info } from "./Explain";
 
 function ConnectionPanel() {
@@ -209,29 +209,45 @@ const FIELDS: { [K in ComponentType]: FieldDef[] } = {
   ],
   relay: [
     {
-      key: "curve",
-      label: "Curve",
+      key: "relay_model",
+      label: "Relay type",
       type: "select",
-      options: ["IEC-SI", "IEC-VI", "IEC-EI", "IEC-LTI", "DT"],
-      optionLabels: [
-        CURVE_LABELS["IEC-SI"],
-        CURVE_LABELS["IEC-VI"],
-        CURVE_LABELS["IEC-EI"],
-        CURVE_LABELS["IEC-LTI"],
-        CURVE_LABELS["DT"],
-      ],
+      options: Object.keys(RELAY_MODELS),
+      optionLabels: Object.values(RELAY_MODELS).map((m) => m.label),
     },
-    { key: "plug_setting", label: "Plug setting", unit: "×In", type: "number", step: 0.05, min: 0.1, max: 5 },
-    { key: "time_multiplier", label: "Time multiplier (TMS)", type: "number", step: 0.05, min: 0.025, max: 1.5 },
-    { key: "definite_time_s", label: "Definite time", unit: "s", type: "number", step: 0.05, min: 0.01 },
+    // curve / plug_setting / time_multiplier / definite_time_s ranges and the
+    // available curve set are filled in per relay model — see applyRelayModel.
+    { key: "curve", label: "Curve", type: "select", options: [] },
+    { key: "plug_setting", label: "Plug setting", unit: "×In", type: "number", step: 0.05 },
+    { key: "time_multiplier", label: "Time multiplier (TMS)", type: "number", step: 0.05 },
+    { key: "definite_time_s", label: "Definite time", unit: "s", type: "number", step: 0.05 },
   ],
 };
+
+// Constrain the relay fields to what the selected hardware model accepts.
+function applyRelayModel(fields: FieldDef[], model: RelayModel): FieldDef[] {
+  const spec = RELAY_MODELS[model] ?? RELAY_MODELS.generic;
+  return fields.map((f) => {
+    switch (f.key) {
+      case "curve":
+        return { ...f, options: spec.curves, optionLabels: spec.curves.map((c) => CURVE_LABELS[c]) };
+      case "plug_setting":
+        return { ...f, min: spec.plugMin, max: spec.plugMax, step: spec.plugStep };
+      case "time_multiplier":
+        return { ...f, min: spec.tmsMin, max: spec.tmsMax };
+      case "definite_time_s":
+        return { ...f, min: spec.dtMin, max: spec.dtMax };
+      default:
+        return f;
+    }
+  });
+}
 
 function validateField(f: FieldDef, value: number): string | null {
   if (f.type !== "number") return null;
   if (isNaN(value) || !isFinite(value)) return "Must be a valid number";
   if (f.min !== undefined && value < f.min) {
-    return f.min === 0 ? "Must be ≥ 0" : `Must be > 0`;
+    return f.min === 0 ? "Must be ≥ 0" : `Must be ≥ ${f.min}`;
   }
   if (f.max !== undefined && value > f.max) return `Must be ≤ ${f.max}`;
   return null;
@@ -297,11 +313,14 @@ export function PropertiesPanel() {
   }
 
   const params = comp.parameters as unknown as Record<string, unknown>;
-  const fields = FIELDS[comp.type].filter((f) => {
+  let fields = FIELDS[comp.type].filter((f) => {
     // Definite-time field only applies to the DT curve; hide it otherwise.
     if (comp.type === "relay" && f.key === "definite_time_s" && params.curve !== "DT") return false;
     return true;
   });
+  if (comp.type === "relay") {
+    fields = applyRelayModel(fields, (params.relay_model as RelayModel) ?? "generic"); // legacy pre-v0.10 relays
+  }
 
   const handleNumberChange = (f: FieldDef, raw: string) => {
     const val = parseFloat(raw);
@@ -386,6 +405,18 @@ export function PropertiesPanel() {
                       } as any);
                     } else if (comp.type === "fuse" && f.key === "rated_current_a") {
                       updateComponentParams(comp.id, { rated_current_a: parseFloat(v) } as any);
+                    } else if (comp.type === "relay" && f.key === "relay_model") {
+                      // Switching hardware clamps the settings into the new
+                      // model's ranges and drops curves it doesn't offer.
+                      const spec = RELAY_MODELS[v as RelayModel];
+                      const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
+                      updateComponentParams(comp.id, {
+                        relay_model: v as RelayModel,
+                        plug_setting: clamp(params.plug_setting as number, spec.plugMin, spec.plugMax),
+                        time_multiplier: clamp(params.time_multiplier as number, spec.tmsMin, spec.tmsMax),
+                        definite_time_s: clamp(params.definite_time_s as number, spec.dtMin, spec.dtMax),
+                        ...(spec.curves.includes(params.curve as IdmtCurve) ? {} : { curve: "IEC-SI" as IdmtCurve }),
+                      } as any);
                     } else {
                       updateComponentParams(comp.id, { [f.key]: v } as any);
                     }
@@ -418,11 +449,14 @@ export function PropertiesPanel() {
                   defaultValue={params[f.key] as number}
                   // Uncontrolled input — include in the key any other field whose
                   // change should *re-seed* this input's value. starting_pf gets
-                  // re-seeded when starting_method changes (auto-fill default PF).
+                  // re-seeded when starting_method changes (auto-fill default PF);
+                  // relay settings get re-seeded when the model clamps them.
                   key={
                     comp.type === "motor" && f.key === "starting_pf"
                       ? `${comp.id}-${f.key}-${params.starting_method}`
-                      : `${comp.id}-${f.key}`
+                      : comp.type === "relay"
+                        ? `${comp.id}-${f.key}-${params.relay_model}`
+                        : `${comp.id}-${f.key}`
                   }
                   onChange={(e) => handleNumberChange(f, e.target.value)}
                 />

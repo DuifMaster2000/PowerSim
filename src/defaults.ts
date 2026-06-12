@@ -2,7 +2,41 @@
 // Default parameter values when a new component is dropped on the canvas.
 // =====================================================================
 
-import type { ComponentType, ParamsByType, MotorStartingMethod, IdmtCurve, CtParams } from "./types";
+import type { ComponentType, ParamsByType, MotorStartingMethod, IdmtCurve, CtParams, RelayModel } from "./types";
+
+// Per-model relay setting ranges and available curves — mirrors what the real
+// device accepts so the properties panel can't be set outside the hardware.
+export interface RelayModelSpec {
+  label: string;
+  plugMin: number;
+  plugMax: number;
+  plugStep: number;
+  tmsMin: number;
+  tmsMax: number;
+  dtMin: number;
+  dtMax: number;
+  curves: IdmtCurve[];
+}
+
+export const RELAY_MODELS: Record<RelayModel, RelayModelSpec> = {
+  // Conservative classic-IDMT ranges (electromechanical-era TMS dial).
+  generic: {
+    label: "Generic IDMT",
+    plugMin: 0.1, plugMax: 5, plugStep: 0.05,
+    tmsMin: 0.025, tmsMax: 1.5,
+    dtMin: 0.01, dtMax: 100,
+    curves: ["IEC-SI", "IEC-VI", "IEC-EI", "IEC-LTI", "DT"],
+  },
+  // ABB Relion 615 series, phase overcurrent low stage (PHLPTOC "51"):
+  // start value 0.05–5.00 ×In, time multiplier 0.05–15.0, DT 0.04–200 s.
+  "ABB-REM615": {
+    label: "ABB REM615 (Relion)",
+    plugMin: 0.05, plugMax: 5, plugStep: 0.05,
+    tmsMin: 0.05, tmsMax: 15,
+    dtMin: 0.04, dtMax: 200,
+    curves: ["IEC-SI", "IEC-VI", "IEC-EI", "IEC-LTI", "ABB-RI", "DT"],
+  },
+};
 
 // Default CT fitted to a wire when the user adds a current transformer to it.
 export const DEFAULT_CT_PARAMS: CtParams = {
@@ -30,6 +64,7 @@ export const CURVE_LABELS: Record<IdmtCurve, string> = {
   "IEC-VI": "Very Inverse",
   "IEC-EI": "Extremely Inverse",
   "IEC-LTI": "Long-Time Inverse",
+  "ABB-RI": "RI Inverse (ABB)",
   "DT": "Definite Time",
 };
 
@@ -102,6 +137,7 @@ export const DEFAULT_PARAMS: { [K in ComponentType]: ParamsByType[K] } = {
     intact: true,
   },
   relay: {
+    relay_model: "generic",
     curve: "IEC-SI",
     plug_setting: 1.0,
     time_multiplier: 0.1,

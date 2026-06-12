@@ -83,17 +83,25 @@ export interface FuseParams {
 
 // IEC 60255-151 standard inverse-time overcurrent characteristics, plus a
 // definite-time option. Each maps to (K, α) constants in solver/idmt.ts.
+// "ABB-RI" is ABB's RI inverse (Relion family) for grading against legacy
+// ABB electromechanical relays — available only on ABB relay models.
 export type IdmtCurve =
   | "IEC-SI"   // Standard Inverse
   | "IEC-VI"   // Very Inverse
   | "IEC-EI"   // Extremely Inverse
   | "IEC-LTI"  // Long-Time Inverse
+  | "ABB-RI"   // RI Inverse (ABB Relion)
   | "DT";      // Definite Time
 
+// Relay hardware model: constrains the setting ranges and curve set in the
+// properties panel to what the real device accepts.
+export type RelayModel = "generic" | "ABB-REM615";
+
 export interface RelayParams {
+  relay_model: RelayModel;
   curve: IdmtCurve;
   plug_setting: number;     // pickup as a multiple of the CT secondary (Is/In), e.g. 1.0
-  time_multiplier: number;  // TMS — scales the whole IDMT curve (e.g. 0.05–1.5)
+  time_multiplier: number;  // TMS — scales the whole IDMT curve
   definite_time_s: number;  // operate time used when curve === "DT"
   // The connection (conductor) whose CT this relay measures. Picked from a
   // dropdown of CT-equipped wires in the relay's properties panel. null when

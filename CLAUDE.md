@@ -229,6 +229,16 @@ The grading tab previously plotted every relay + fuse, always. v0.9 makes the st
 - Curve kinds are dash-coded (relay solid, fuse/motor/cable/transformer distinct dashes). Fault markers + grading-margin table cover only the *displayed* relays.
 - Axis caveat: curves are plotted at **each device's own voltage level** (axis label says so); currents are not referred across transformers.
 
+### v0.10 — Relay hardware models (ABB REM615)
+
+Relays now carry a **hardware model** that constrains their settings to what the real device accepts.
+
+- `RelayParams.relay_model: "generic" | "ABB-REM615"` (default `"generic"`, legacy `?? "generic"`). Spec table `RELAY_MODELS` in `defaults.ts`: per-model plug-setting / TMS / definite-time ranges + available curve set.
+  - **generic**: classic electromechanical-era ranges — plug 0.1–5 ×In, TMS 0.025–1.5, DT 0.01–100 s, IEC curves only.
+  - **ABB-REM615** (Relion 615 series, PHLPTOC low stage): plug 0.05–5.00 ×In, **TMS 0.05–15.0**, DT 0.04–200 s, IEC curves + **ABB RI inverse**.
+- New `IdmtCurve` value `"ABB-RI"`: t = k / (0.339 − 0.236/m) in `idmt.ts` — flattens toward ~2.95·k at high multiples (grades against old ABB disc relays). Excluded from `IEC_CONSTANTS` typing.
+- **PropertiesPanel**: "Relay type" select; `applyRelayModel` rewrites the curve options and numeric min/max per model. Switching model **clamps** out-of-range settings and resets unavailable curves to IEC-SI; relay numeric inputs re-seed via React key on model change. Validation message now states the actual minimum (`Must be ≥ x`).
+
 ---
 
 ## Known limitations / v0.5 candidates

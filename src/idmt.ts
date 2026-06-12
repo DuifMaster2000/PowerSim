@@ -9,7 +9,7 @@ import type { RelayParams, CtParams, FuseParams, IdmtCurve } from "./types";
 
 // (K, α) constants for the IEC standard inverse-time families.
 // t = TMS · K / ((I/Is)^α − 1)
-const IEC_CONSTANTS: Record<Exclude<IdmtCurve, "DT">, { k: number; alpha: number }> = {
+const IEC_CONSTANTS: Record<Exclude<IdmtCurve, "DT" | "ABB-RI">, { k: number; alpha: number }> = {
   "IEC-SI": { k: 0.14, alpha: 0.02 },
   "IEC-VI": { k: 13.5, alpha: 1.0 },
   "IEC-EI": { k: 80.0, alpha: 2.0 },
@@ -42,8 +42,16 @@ export function idmtOperateTime(
     return relay.definite_time_s;
   }
 
-  const { k, alpha } = IEC_CONSTANTS[relay.curve];
   const m = primaryCurrentA / isA;
+
+  if (relay.curve === "ABB-RI") {
+    // ABB RI inverse (Relion): t = k / (0.339 − 0.236/m). Flattens toward
+    // ~2.95·k at high multiples instead of racing to zero like IEC curves —
+    // that near-constant tail is what grades it against old ABB disc relays.
+    return relay.time_multiplier / (0.339 - 0.236 / m);
+  }
+
+  const { k, alpha } = IEC_CONSTANTS[relay.curve];
   return (relay.time_multiplier * k) / (Math.pow(m, alpha) - 1);
 }
 
