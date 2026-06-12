@@ -1,21 +1,43 @@
 // =====================================================================
 // Grading tab — log–log time–current characteristic (TCC) chart.
-// Plots every relay's IDMT curve and every fuse's (approximate) melting
-// band on a shared log–log grid, overlays fault-current markers from the
-// last short-circuit run, and tabulates grading margins between relays.
+//
+// Two modes:
+//  - No grading selection: plots every relay + fuse (quick overview).
+//  - Grading selection (components clicked on the canvas while this tab
+//    is open): plots exactly the selected section's curves — relays
+//    (directly or via the breaker they trip), fuses, motor start curves,
+//    cable thermal damage curves, transformer damage curves + inrush.
+// Curve colours match the dots shown on the selected canvas components.
 //
 // Hand-built SVG (same approach as AnimationPlayer's MismatchChart):
 // log10 domain mappers turn current/time into pixel coordinates.
 // =====================================================================
 
 import { useStore } from "../store";
-import { CURVE_LABELS } from "../defaults";
-import { idmtCurvePoints, fuseTccPoints, idmtOperateTime, primaryPickupA } from "../idmt";
-import type { RelayParams, FuseParams } from "../types";
+import { CURVE_LABELS, GRADING_COLORS } from "../defaults";
+import {
+  idmtCurvePoints,
+  fuseTccPoints,
+  idmtOperateTime,
+  primaryPickupA,
+  motorStartCurvePoints,
+  cableDamageCurvePoints,
+  transformerDamageCurvePoints,
+  transformerInrushPoint,
+  CABLE_K_CU_XLPE,
+} from "../idmt";
+import type { RelayParams, FuseParams, CableParams, TransformerParams, PowerComponent } from "../types";
 
-// Distinct line colours for relays (cycled). Fuses share a muted amber.
-const RELAY_COLORS = ["#4ea1ff", "#38d39f", "#c792ea", "#ff8a65", "#ffd166"];
 const FUSE_COLOR = "#e0a030";
+
+// Dash patterns distinguish curve kinds even when colours repeat.
+const DASH: Record<string, string | undefined> = {
+  relay: undefined,
+  fuse: "6 4",
+  motor: "2 3",
+  cable: "10 4",
+  transformer: "1 3",
+};
 
 function downloadCsv(filename: string, rows: string[][]) {
   const csv = rows.map((r) => r.map((cell) => `"${cell}"`).join(",")).join("\n");
@@ -32,8 +54,24 @@ interface DeviceCurve {
   id: string;
   label: string;
   color: string;
-  dashed: boolean;
+  dash?: string;
   points: { i: number; t: number }[];
+}
+
+interface DotMarker {
+  id: string;
+  i: number;
+  t: number;
+  color: string;
+  label: string;
+}
+
+// A device contributing curves to the study, resolved from the selection.
+interface Entry {
+  device: PowerComponent; // the curve's own device (relay, fuse, motor, cable, transformer)
+  kind: "relay" | "fuse" | "motor" | "cable" | "transformer";
+  color: string;
+  via?: string; // breaker label when a relay entered via its breaker
 }
 
 export function GradingCurves() {
@@ -41,40 +79,101 @@ export function GradingCurves() {
   const connections = useStore((s) => s.connections);
   const getRelayLinks = useStore((s) => s.getRelayLinks);
   const getRelayFaultCurrents = useStore((s) => s.getRelayFaultCurrents);
+  const getMotorGradingData = useStore((s) => s.getMotorGradingData);
+  const gradingSelection = useStore((s) => s.gradingSelection);
+  const toggleGradingComponent = useStore((s) => s.toggleGradingComponent);
+  const clearGradingSelection = useStore((s) => s.clearGradingSelection);
 
   // touch connections so links re-resolve when wiring changes
   void connections;
 
-  const relays = components.filter((c) => c.type === "relay");
-  const fuses = components.filter((c) => c.type === "fuse");
+  const byId = new Map(components.map((c) => [c.id, c]));
+  const selection = gradingSelection.filter((id) => byId.has(id));
+  const selectionMode = selection.length > 0;
 
-  if (relays.length === 0 && fuses.length === 0) {
+  const allRelays = components.filter((c) => c.type === "relay");
+  const allFuses = components.filter((c) => c.type === "fuse");
+
+  if (!selectionMode && allRelays.length === 0 && allFuses.length === 0) {
     return (
       <div className="results-body">
         <div className="props-empty" style={{ padding: 24 }}>
           Add a relay or a fuse to the network, then this tab plots its time–current
-          characteristic. Fit a CT to a power wire and pick it as the relay's measured
-          CT, then draw a dashed control wire to the breaker, to anchor the relay's
-          pickup and fault marker.
+          characteristic. With this tab open, click breakers, fuses, motors, cables or
+          transformers on the canvas to grade a specific section.
         </div>
       </div>
     );
   }
 
+  // ---- Resolve the selection into curve entries ----
+  const entries: Entry[] = [];
+  const skipped: string[] = [];
+  if (selectionMode) {
+    const seenRelays = new Set<string>();
+    selection.forEach((id, idx) => {
+      const comp = byId.get(id)!;
+      const color = GRADING_COLORS[idx % GRADING_COLORS.length];
+      if (comp.type === "relay") {
+        if (!seenRelays.has(comp.id)) {
+          seenRelays.add(comp.id);
+          entries.push({ device: comp, kind: "relay", color });
+        }
+      } else if (comp.type === "switch") {
+        const linked = allRelays.filter((r) => getRelayLinks(r.id).breakerId === comp.id);
+        if (linked.length === 0) {
+          skipped.push(`${comp.label}: no relay trips this breaker — wire a relay's control wire to it.`);
+        }
+        for (const r of linked) {
+          if (seenRelays.has(r.id)) continue;
+          seenRelays.add(r.id);
+          entries.push({ device: r, kind: "relay", color, via: comp.label });
+        }
+      } else if (comp.type === "fuse") {
+        entries.push({ device: comp, kind: "fuse", color });
+      } else if (comp.type === "motor") {
+        entries.push({ device: comp, kind: "motor", color });
+      } else if (comp.type === "cable") {
+        entries.push({ device: comp, kind: "cable", color });
+      } else if (comp.type === "transformer") {
+        entries.push({ device: comp, kind: "transformer", color });
+      }
+    });
+  } else {
+    allRelays.forEach((r, idx) =>
+      entries.push({ device: r, kind: "relay", color: GRADING_COLORS[idx % GRADING_COLORS.length] }),
+    );
+    allFuses.forEach((f) => entries.push({ device: f, kind: "fuse", color: FUSE_COLOR }));
+  }
+
+  const relayEntries = entries.filter((e) => e.kind === "relay");
   const faultCurrents = getRelayFaultCurrents();
+  const motorData = getMotorGradingData();
 
   // ---- Domain bounds (log decades) ----
   const tMin = 0.01;
   const tMax = 100;
 
-  // Upper current bound: cover fault markers and a generous multiple of pickups.
   let maxI = 1000;
-  for (const r of relays) {
-    const links = getRelayLinks(r.id);
-    const pickup = primaryPickupA(r.parameters as RelayParams, links.ct);
-    maxI = Math.max(maxI, pickup * 30);
+  for (const e of entries) {
+    if (e.kind === "relay") {
+      const pickup = primaryPickupA(e.device.parameters as RelayParams, getRelayLinks(e.device.id).ct);
+      maxI = Math.max(maxI, pickup * 30);
+    } else if (e.kind === "fuse") {
+      maxI = Math.max(maxI, (e.device.parameters as FuseParams).rated_current_a * 30);
+    } else if (e.kind === "motor") {
+      const md = motorData.get(e.device.id);
+      if (md) maxI = Math.max(maxI, md.startA * 2);
+    } else if (e.kind === "cable") {
+      const csa = (e.device.parameters as CableParams).csa_mm2 ?? 120;
+      // Cover the damage current at 1 s so a useful stretch of the curve shows.
+      maxI = Math.max(maxI, CABLE_K_CU_XLPE * csa * 1.2);
+    } else if (e.kind === "transformer") {
+      const p = e.device.parameters as TransformerParams;
+      const inA = (p.rated_mva * 1000) / (Math.sqrt(3) * p.primary_kv);
+      maxI = Math.max(maxI, inA * 27.5);
+    }
   }
-  for (const f of fuses) maxI = Math.max(maxI, (f.parameters as FuseParams).rated_current_a * 30);
   for (const fc of faultCurrents.values()) maxI = Math.max(maxI, fc.primaryA * 1.3);
   const xMaxDecade = Math.ceil(Math.log10(maxI));
   const xMinDecade = 1; // 10 A
@@ -83,29 +182,78 @@ export function GradingCurves() {
 
   // ---- Build curves ----
   const curves: DeviceCurve[] = [];
-  relays.forEach((r, idx) => {
-    const links = getRelayLinks(r.id);
-    const pts = idmtCurvePoints(r.parameters as RelayParams, links.ct, iMax, tMax, tMin);
-    if (pts.length === 0) return;
-    curves.push({
-      id: r.id,
-      label: `${r.label} · ${CURVE_LABELS[(r.parameters as RelayParams).curve]}`,
-      color: RELAY_COLORS[idx % RELAY_COLORS.length],
-      dashed: false,
-      points: pts,
-    });
-  });
-  fuses.forEach((f) => {
-    const pts = fuseTccPoints(f.parameters as FuseParams, iMax, tMax, tMin);
-    if (pts.length === 0) return;
-    curves.push({
-      id: f.id,
-      label: `${f.label} · ${(f.parameters as FuseParams).rated_current_a} A fuse (approx.)`,
-      color: FUSE_COLOR,
-      dashed: true,
-      points: pts,
-    });
-  });
+  const dots: DotMarker[] = [];
+  for (const e of entries) {
+    const c = e.device;
+    if (e.kind === "relay") {
+      const links = getRelayLinks(c.id);
+      const pts = idmtCurvePoints(c.parameters as RelayParams, links.ct, iMax, tMax, tMin);
+      if (pts.length === 0) continue;
+      curves.push({
+        id: c.id,
+        label: `${c.label}${e.via ? ` (${e.via})` : ""} · ${CURVE_LABELS[(c.parameters as RelayParams).curve]}`,
+        color: e.color,
+        dash: DASH.relay,
+        points: pts,
+      });
+    } else if (e.kind === "fuse") {
+      const pts = fuseTccPoints(c.parameters as FuseParams, iMax, tMax, tMin);
+      if (pts.length === 0) continue;
+      curves.push({
+        id: c.id,
+        label: `${c.label} · ${(c.parameters as FuseParams).rated_current_a} A fuse (approx.)`,
+        color: e.color,
+        dash: DASH.fuse,
+        points: pts,
+      });
+    } else if (e.kind === "motor") {
+      const md = motorData.get(c.id);
+      if (!md) {
+        skipped.push(`${c.label}: not connected to an energised bus — wire it up to compute its FLC.`);
+        continue;
+      }
+      const pts = motorStartCurvePoints(md.flcA, md.startA, md.startTimeS, tMax, tMin);
+      if (pts.length === 0) continue;
+      curves.push({
+        id: c.id,
+        label: `${c.label} · start ${(md.startA / md.flcA).toFixed(1)}×FLC · ${md.startTimeS}s`,
+        color: e.color,
+        dash: DASH.motor,
+        points: pts,
+      });
+    } else if (e.kind === "cable") {
+      const csa = (c.parameters as CableParams).csa_mm2 ?? 120;
+      const pts = cableDamageCurvePoints(csa, iMax, tMax, tMin);
+      if (pts.length === 0) continue;
+      curves.push({
+        id: c.id,
+        label: `${c.label} · ${csa} mm² damage`,
+        color: e.color,
+        dash: DASH.cable,
+        points: pts,
+      });
+    } else if (e.kind === "transformer") {
+      const p = c.parameters as TransformerParams;
+      const inA = (p.rated_mva * 1000) / (Math.sqrt(3) * p.primary_kv);
+      const pts = transformerDamageCurvePoints(inA, tMax, tMin);
+      if (pts.length === 0) continue;
+      curves.push({
+        id: c.id,
+        label: `${c.label} · damage (cat. I)`,
+        color: e.color,
+        dash: DASH.transformer,
+        points: pts,
+      });
+      const inrush = transformerInrushPoint(inA);
+      dots.push({
+        id: `inrush-${c.id}`,
+        i: inrush.i,
+        t: inrush.t,
+        color: e.color,
+        label: `${c.label} inrush ~12×In`,
+      });
+    }
+  }
 
   // ---- SVG geometry ----
   const W = 720;
@@ -143,7 +291,7 @@ export function GradingCurves() {
   const fmtCurrent = (a: number) => (a >= 1000 ? `${a / 1000} kA` : `${a} A`);
   const fmtTime = (t: number) => (t >= 1 ? `${t}` : `${t}`);
 
-  // ---- Fault markers + operate-time dots ----
+  // ---- Fault markers + operate-time dots (displayed relays only) ----
   const markers: {
     relayId: string;
     label: string;
@@ -151,21 +299,21 @@ export function GradingCurves() {
     faultA: number;
     operateS: number;
   }[] = [];
-  relays.forEach((r, idx) => {
-    const fc = faultCurrents.get(r.id);
+  relayEntries.forEach((e) => {
+    const fc = faultCurrents.get(e.device.id);
     if (!fc) return;
-    const links = getRelayLinks(r.id);
-    const t = idmtOperateTime(r.parameters as RelayParams, links.ct, fc.primaryA);
+    const links = getRelayLinks(e.device.id);
+    const t = idmtOperateTime(e.device.parameters as RelayParams, links.ct, fc.primaryA);
     markers.push({
-      relayId: r.id,
-      label: r.label,
-      color: RELAY_COLORS[idx % RELAY_COLORS.length],
+      relayId: e.device.id,
+      label: e.device.label,
+      color: e.color,
       faultA: fc.primaryA,
       operateS: t,
     });
   });
 
-  // ---- Grading margins between relay pairs ----
+  // ---- Grading margins between displayed relay pairs ----
   // Educational approximation: for each pair evaluate both relays' operate
   // times at the higher of their two fault currents (the more downstream fault
   // both devices carry in a radial series). Δt is the coordination margin; the
@@ -178,10 +326,10 @@ export function GradingCurves() {
     tag: "tag-ok" | "tag-warn" | "tag-bad";
   }
   const margins: MarginRow[] = [];
-  for (let a = 0; a < relays.length; a++) {
-    for (let b = a + 1; b < relays.length; b++) {
-      const ra = relays[a];
-      const rb = relays[b];
+  for (let a = 0; a < relayEntries.length; a++) {
+    for (let b = a + 1; b < relayEntries.length; b++) {
+      const ra = relayEntries[a].device;
+      const rb = relayEntries[b].device;
       const fa = faultCurrents.get(ra.id);
       const fb = faultCurrents.get(rb.id);
       if (!fa || !fb) continue;
@@ -198,7 +346,7 @@ export function GradingCurves() {
   }
 
   const exportCsv = () => {
-    const rows: string[][] = [["Device", "Current [A]", "Operate time [s]"]];
+    const rows: string[][] = [["Device", "Current [A]", "Operate/withstand time [s]"]];
     for (const c of curves) {
       for (const p of c.points) rows.push([c.label, p.i.toFixed(1), p.t.toFixed(4)]);
     }
@@ -217,8 +365,9 @@ export function GradingCurves() {
         <h3>Protection Grading · Time–Current Curves</h3>
         <div className="results-status">
           <span style={{ color: "var(--text-dim)" }}>
-            {relays.length} relay{relays.length !== 1 ? "s" : ""} · {fuses.length} fuse
-            {fuses.length !== 1 ? "s" : ""}
+            {selectionMode
+              ? `${selection.length} component${selection.length !== 1 ? "s" : ""} in study · click canvas components to add/remove`
+              : `showing all relays & fuses · click a breaker, motor, fuse, cable or transformer on the canvas to grade a section`}
             {faultCurrents.size === 0 && " · run a short-circuit for fault markers"}
           </span>
           <button onClick={exportCsv} style={{ fontSize: 11, padding: "1px 8px", marginLeft: 8 }}>
@@ -227,6 +376,28 @@ export function GradingCurves() {
         </div>
       </div>
       <div className="results-body">
+        {selectionMode && (
+          <div className="grading-chips">
+            {selection.map((id, idx) => {
+              const color = GRADING_COLORS[idx % GRADING_COLORS.length];
+              return (
+                <span key={id} className="grading-chip" style={{ borderColor: color, color }}>
+                  {byId.get(id)!.label}
+                  <button
+                    title="Remove from grading study"
+                    onClick={() => toggleGradingComponent(id)}
+                  >
+                    ×
+                  </button>
+                </span>
+              );
+            })}
+            <button className="grading-clear" onClick={clearGradingSelection}>
+              Clear all
+            </button>
+          </div>
+        )}
+
         <svg className="tcc-chart" viewBox={`0 0 ${W} ${H}`} width="100%">
           {/* gridlines */}
           {xTicks.map((i) => (
@@ -296,7 +467,7 @@ export function GradingCurves() {
             textAnchor="middle"
             fill="var(--text-dim)"
           >
-            Current [A] — primary referred
+            Current [A] — at each device's own voltage level
           </text>
 
           {/* fault markers (behind curves) */}
@@ -322,9 +493,27 @@ export function GradingCurves() {
               fill="none"
               stroke={c.color}
               strokeWidth={1.8}
-              strokeDasharray={c.dashed ? "6 4" : undefined}
+              strokeDasharray={c.dash}
             />
           ))}
+
+          {/* transformer inrush points */}
+          {dots.map((d) =>
+            d.i <= iMax ? (
+              <g key={d.id}>
+                <circle
+                  cx={xAt(d.i)}
+                  cy={yAt(clampT(d.t))}
+                  r={4}
+                  fill="none"
+                  stroke={d.color}
+                  strokeWidth={1.6}
+                />
+                <circle cx={xAt(d.i)} cy={yAt(clampT(d.t))} r={1.4} fill={d.color} />
+                <title>{d.label}</title>
+              </g>
+            ) : null,
+          )}
 
           {/* operate-time dots */}
           {markers.map((m) =>
@@ -351,7 +540,7 @@ export function GradingCurves() {
                 y2={0}
                 stroke={c.color}
                 strokeWidth={2}
-                strokeDasharray={c.dashed ? "5 3" : undefined}
+                strokeDasharray={c.dash ? "5 3" : undefined}
               />
               <text x={24} y={3} fontSize={10} fill="var(--text)" fontFamily="var(--font-mono)">
                 {c.label.length > 22 ? c.label.slice(0, 21) + "…" : c.label}
@@ -359,6 +548,14 @@ export function GradingCurves() {
             </g>
           ))}
         </svg>
+
+        {skipped.length > 0 && (
+          <div style={{ fontSize: 11, color: "var(--warn)", padding: "2px 4px", lineHeight: 1.5 }}>
+            {skipped.map((s, k) => (
+              <div key={k}>⚠ {s}</div>
+            ))}
+          </div>
+        )}
 
         {markers.length > 0 && (
           <table className="results-table" style={{ marginTop: 4 }}>

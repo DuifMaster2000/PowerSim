@@ -73,7 +73,7 @@ export const industrialPlant: ProjectFile = {
       type: "motor",
       label: "PUMP-M1",
       position: { x: 200, y: 610 },
-      parameters: { rated_kw: 200, power_factor: 0.87, efficiency: 0.93, locked_rotor_current_ratio: 6.5, starting_method: "soft-starter", starting_pf: 0.3 },
+      parameters: { rated_kw: 200, power_factor: 0.87, efficiency: 0.93, locked_rotor_current_ratio: 6.5, starting_method: "soft-starter", starting_pf: 0.3, starting_time_s: 12 },
     },
     {
       id: "LD-2",
@@ -87,7 +87,7 @@ export const industrialPlant: ProjectFile = {
       type: "motor",
       label: "FAN-M2",
       position: { x: 540, y: 610 },
-      parameters: { rated_kw: 160, power_factor: 0.86, efficiency: 0.93, locked_rotor_current_ratio: 6.0, starting_method: "VFD", starting_pf: 0.95 },
+      parameters: { rated_kw: 160, power_factor: 0.86, efficiency: 0.93, locked_rotor_current_ratio: 6.0, starting_method: "VFD", starting_pf: 0.95, starting_time_s: 15 },
     },
   ],
   connections: [

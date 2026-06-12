@@ -47,6 +47,7 @@ export interface CableParams {
   reactance_ohm_per_km: number;
   length_m: number;
   ampacity_a: number;
+  csa_mm2: number; // conductor cross-section — used for the thermal damage curve on the grading chart
 }
 
 export interface LoadParams {
@@ -63,6 +64,7 @@ export interface MotorParams {
   locked_rotor_current_ratio: number;
   starting_method: MotorStartingMethod;
   starting_pf: number; // locked-rotor power factor (typically 0.15–0.30, very inductive)
+  starting_time_s: number; // run-up time — sets the width of the start curve on the grading chart
 }
 
 export interface SwitchParams {

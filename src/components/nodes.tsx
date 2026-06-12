@@ -21,6 +21,7 @@ interface NodeData {
   busLengthPx?: number;
   ratioText?: string; // transformer: "11 kV / 0.4 kV"
   baseOverlay?: string; // Explain-mode-only: e.g. "base: 11² / 100 = 1.21 Ω"
+  gradingColor?: string; // set when the component is in the grading study — matches its curve colour
 }
 
 // We register a single generic node renderer in React Flow and dispatch on the
@@ -30,6 +31,7 @@ export function GenericNode({ id, data, selected }: NodeProps) {
   const toggleSwitch = useStore((s) => s.toggleSwitch);
   const updateComponentParams = useStore((s) => s.updateComponentParams);
   const updateComponentLabel = useStore((s) => s.updateComponentLabel);
+  const resultsTab = useStore((s) => s.resultsTab);
 
   // Inline label editing: double-click the label to rename in place.
   const [editing, setEditing] = useState(false);
@@ -52,7 +54,9 @@ export function GenericNode({ id, data, selected }: NodeProps) {
   };
 
   const onSymbolClick = (e: React.MouseEvent) => {
-    if (d.componentType === "switch") {
+    // While the Grading tab is open, a click adds the breaker to the grading
+    // study (handled by onNodeClick) instead of operating it.
+    if (d.componentType === "switch" && resultsTab !== "grading") {
       e.stopPropagation();
       toggleSwitch(id);
     }
@@ -79,6 +83,13 @@ export function GenericNode({ id, data, selected }: NodeProps) {
 
   return (
     <div className={className} style={isBusbar ? { width: busLength } : undefined}>
+      {d.gradingColor && (
+        <div
+          className="node-grading-dot"
+          style={{ background: d.gradingColor }}
+          title="In grading study — its curve uses this colour"
+        />
+      )}
       {isBusbar && (
         <NodeResizer
           isVisible={selected}

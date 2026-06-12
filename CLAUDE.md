@@ -210,6 +210,24 @@ The v0.7 CT was a placeable node that "clamped" onto a conductor via `CtParams.o
 
 **Back-compat:** `migrateLegacyCts` in `store.ts` runs on `loadProject` — it copies each legacy CT component's rating onto the conductor it clamped, repoints any relay that was control-wired to it via `measured_connection_id`, then drops the CT components and their control wires. Old `.psim.json` files load unchanged.
 
+### v0.9 — Sectional grading studies (selectable TCC curves)
+
+The grading tab previously plotted every relay + fuse, always. v0.9 makes the study **selection-driven** so a specific section can be graded.
+
+**Selection model:**
+- `gradingSelection: string[]` in the store (view-only: not in the project file or undo history; cleared on new/load; pruned in `removeComponent`). Actions: `toggleGradingComponent(id)`, `clearGradingSelection()`.
+- **With the Grading tab open, clicking a grading-capable component on the canvas toggles it in/out of the study** (`GRADABLE_TYPES` in `defaults.ts`: relay, switch, fuse, motor, cable, transformer). Clicking a breaker's symbol in grading mode does NOT operate it (`onSymbolClick` checks `resultsTab`).
+- Selected components show a **colored dot** (`.node-grading-dot`) whose colour matches their curve in the chart — `GRADING_COLORS` in `defaults.ts` is shared by Canvas and GradingCurves, keyed by selection order. The Grading tab shows removable **chips** per selection + Clear all.
+- Empty selection = previous behaviour (all relays + fuses).
+
+**New curves (all in `src/idmt.ts`, pure):**
+- **Motor start curve** — `motorStartCurvePoints(flcA, startA, startTimeS)`: locked-rotor current until the run-up time, then FLC. New `MotorParams.starting_time_s` (default 5 s, legacy `?? 5`). FLC needs the motor's bus kV → store getter `getMotorGradingData()` (uses `buildNetwork` + `effectiveStartingCurrentRatio`, preserving the UI/solver layering rule).
+- **Cable thermal damage** — `cableDamageCurvePoints(csaMm2, …)`: adiabatic I²t with k = 143 (Cu/XLPE, `CABLE_K_CU_XLPE`). New `CableParams.csa_mm2` (default 120 mm², legacy `?? 120`).
+- **Transformer damage + inrush** — `transformerDamageCurvePoints(inA)`: IEC 60076-5 / ANSI C57.109 category I (t = 1250/m², 3.5–25×In, In at primary kV) plus `transformerInrushPoint(inA)` (12×In @ 0.1 s) drawn as a ring marker.
+- A selected **breaker resolves to the relay(s) that trip it** (via `getRelayLinks().breakerId`); breakers with no relay produce a warning note under the chart, as do unwired motors.
+- Curve kinds are dash-coded (relay solid, fuse/motor/cable/transformer distinct dashes). Fault markers + grading-margin table cover only the *displayed* relays.
+- Axis caveat: curves are plotted at **each device's own voltage level** (axis label says so); currents are not referred across transformers.
+
 ---
 
 ## Known limitations / v0.5 candidates

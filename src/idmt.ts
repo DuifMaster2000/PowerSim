@@ -91,6 +91,83 @@ export function idmtCurvePoints(
   return points;
 }
 
+// Motor starting curve: the motor draws its (method-adjusted) locked-rotor
+// current from the instant of starting until the run-up time, then drops back
+// to full-load current. Any protection curve must sit ABOVE/right of this
+// shape or the motor will trip on a normal start.
+export function motorStartCurvePoints(
+  flcA: number,
+  startA: number,
+  startTimeS: number,
+  tMax = 100,
+  tMin = 0.01,
+): CurvePoint[] {
+  if (flcA <= 0 || startA <= 0 || startTimeS <= 0) return [];
+  const tStart = Math.min(Math.max(startTimeS, tMin * 2), tMax);
+  return [
+    { i: startA, t: tMin },
+    { i: startA, t: tStart },
+    { i: flcA, t: tStart },
+    { i: flcA, t: tMax },
+  ];
+}
+
+// Adiabatic withstand constant for copper / XLPE (IEC 60364-4-43 k-value),
+// in A·√s per mm². Educational default — PVC copper would be ~115.
+export const CABLE_K_CU_XLPE = 143;
+
+// Cable thermal damage curve (adiabatic): I²t = (k·S)², i.e. I = k·S/√t.
+// Protection must clear faults BELOW/left of this curve or the conductor
+// insulation is damaged before the fault is removed.
+export function cableDamageCurvePoints(
+  csaMm2: number,
+  maxCurrentA: number,
+  tMax = 100,
+  tMin = 0.01,
+  k = CABLE_K_CU_XLPE,
+): CurvePoint[] {
+  const kS = k * csaMm2;
+  if (kS <= 0) return [];
+  const points: CurvePoint[] = [];
+  const steps = 80;
+  const logTMax = Math.log10(tMax);
+  const logTMin = Math.log10(tMin);
+  for (let s = 0; s <= steps; s++) {
+    const t = Math.pow(10, logTMax - ((logTMax - logTMin) * s) / steps);
+    const i = kS / Math.sqrt(t);
+    if (i > maxCurrentA) break;
+    points.push({ i, t });
+  }
+  return points;
+}
+
+// Transformer through-fault withstand, IEC 60076-5 / ANSI C57.109 category I:
+// t = 1250 / m² for m = I/In between ~3.5× and 25×. Educational approximation.
+export function transformerDamageCurvePoints(
+  ratedInA: number,
+  tMax = 100,
+  tMin = 0.01,
+): CurvePoint[] {
+  if (ratedInA <= 0) return [];
+  const points: CurvePoint[] = [];
+  const steps = 60;
+  const logMin = Math.log10(3.5);
+  const logMax = Math.log10(25);
+  for (let s = 0; s <= steps; s++) {
+    const m = Math.pow(10, logMin + ((logMax - logMin) * s) / steps);
+    const t = Math.min(1250 / (m * m), tMax);
+    if (t < tMin) break;
+    points.push({ i: m * ratedInA, t });
+  }
+  return points;
+}
+
+// Magnetising inrush reference point: ~12×In lasting ~0.1 s. Protection
+// curves must pass above this dot or the transformer trips on energisation.
+export function transformerInrushPoint(ratedInA: number): CurvePoint {
+  return { i: 12 * ratedInA, t: 0.1 };
+}
+
 // Approximate gG fuse total-clearing time as an inverse band. This is a
 // representative fit for educational overlay only — NOT manufacturer data.
 // t ≈ A · (I / In)^(−B), clamped to the plot's time window.

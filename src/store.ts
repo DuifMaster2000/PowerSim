@@ -14,10 +14,10 @@ import type {
   MotorStartingResult,
   ValidationIssue,
 } from "./types";
-import type { CtParams, RelayParams } from "./types";
+import type { CtParams, RelayParams, MotorParams } from "./types";
 import { DEFAULT_PARAMS, COMPONENT_PREFIXES } from "./defaults";
 import { validateProject } from "./validation";
-import { buildNetwork } from "./solver/network";
+import { buildNetwork, effectiveStartingCurrentRatio } from "./solver/network";
 
 // A connection is a control wire (not part of the power circuit) iff either
 // endpoint is a relay. Used by the canvas (dashed styling), the network builder,
@@ -235,6 +235,11 @@ interface State {
   // grading chart. View-only; not part of the project file.
   resultsTab: "results" | "grading";
 
+  // Components included in the grading study (clicked on the canvas while the
+  // Grading tab is open). Order matters: it assigns each one its curve colour.
+  // View-only; not part of the project file or undo history.
+  gradingSelection: string[];
+
   // Undo / redo history
   past: Snapshot[];
   future: Snapshot[];
@@ -272,6 +277,8 @@ interface State {
   setGlossaryOpen: (v: boolean) => void;
   setAnimationIter: (i: number) => void;
   setResultsTab: (v: "results" | "grading") => void;
+  toggleGradingComponent: (id: string) => void;
+  clearGradingSelection: () => void;
   markSaved: () => void;
 
   newProject: () => void;
@@ -300,6 +307,11 @@ interface State {
   // short-circuit run, mapped via the relay's breaker → adjacent branch flow.
   // Empty when no short-circuit result exists.
   getRelayFaultCurrents: () => Map<string, { primaryA: number; label: string }>;
+
+  // Grading: per-motor full-load / starting current in amps at the motor's bus
+  // voltage, for the motor start curve on the TCC chart. Needs the network
+  // (bus kV), so it lives behind the store to preserve the layering rule.
+  getMotorGradingData: () => Map<string, { flcA: number; startA: number; startTimeS: number }>;
 }
 
 const takeSnapshot = (s: State): Snapshot => ({
@@ -335,6 +347,7 @@ const newProjectState = () => ({
   viewport: null as { x: number; y: number; zoom: number } | null,
   projectLoadKey: 0,
   isDirty: false,
+  gradingSelection: [] as string[],
   past: [] as Snapshot[],
   future: [] as Snapshot[],
 });
@@ -400,6 +413,7 @@ export const useStore = create<State>((set, get) => ({
       components: s.components.filter((c) => c.id !== id),
       connections: s.connections.filter((c) => c.fromComponent !== id && c.toComponent !== id),
       selectedComponentId: s.selectedComponentId === id ? null : s.selectedComponentId,
+      gradingSelection: s.gradingSelection.filter((x) => x !== id),
       loadFlow: null,
       shortCircuit: null,
       motorStarting: null,
@@ -537,6 +551,13 @@ export const useStore = create<State>((set, get) => ({
   setGlossaryOpen: (v) => set({ glossaryOpen: v }),
   setAnimationIter: (i) => set({ animationIter: i }),
   setResultsTab: (v) => set({ resultsTab: v }),
+  toggleGradingComponent: (id) =>
+    set((s) => ({
+      gradingSelection: s.gradingSelection.includes(id)
+        ? s.gradingSelection.filter((x) => x !== id)
+        : [...s.gradingSelection, id],
+    })),
+  clearGradingSelection: () => set({ gradingSelection: [] }),
   markSaved: () => set({ isDirty: false }),
 
   newProject: () => set((s) => ({ ...newProjectState(), projectLoadKey: s.projectLoadKey + 1 })),
@@ -571,6 +592,7 @@ export const useStore = create<State>((set, get) => ({
       validation: [],
       faultBusId: null,
       startingMotorId: null,
+      gradingSelection: [],
       past: [],
       future: [],
       // Restore saved viewport if present; otherwise signal a fit-to-view.
@@ -828,5 +850,35 @@ export const useStore = create<State>((set, get) => ({
       result.set(relay.id, { primaryA, label: relay.label });
     }
     return result;
+  },
+
+  getMotorGradingData: () => {
+    const out = new Map<string, { flcA: number; startA: number; startTimeS: number }>();
+    let net;
+    try {
+      net = buildNetwork(get().exportProject());
+    } catch {
+      return out;
+    }
+    for (const m of net.motors) {
+      const bus = net.buses[m.busIndex];
+      const kv = bus.nominalKv || bus.baseKv;
+      if (!kv) continue;
+      const comp = get().components.find((c) => c.id === m.componentId);
+      if (!comp) continue;
+      const p = comp.parameters as MotorParams;
+      const sKva = Math.hypot(m.electricalKw, m.electricalKvar);
+      const flcA = sKva / (Math.sqrt(3) * kv);
+      const ratio = effectiveStartingCurrentRatio(
+        p.starting_method ?? "DOL",
+        p.locked_rotor_current_ratio,
+      );
+      out.set(m.componentId, {
+        flcA,
+        startA: flcA * ratio,
+        startTimeS: p.starting_time_s ?? 5, // legacy pre-v0.9 motors
+      });
+    }
+    return out;
   },
 }));

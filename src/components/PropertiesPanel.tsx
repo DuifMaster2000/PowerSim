@@ -154,6 +154,7 @@ const FIELDS: { [K in ComponentType]: FieldDef[] } = {
     { key: "reactance_ohm_per_km", label: "X", unit: "Ω/km", type: "number", step: 0.01, min: 0 },
     { key: "length_m", label: "Length", unit: "m", type: "number", step: 1, min: 0.1 },
     { key: "ampacity_a", label: "Ampacity", unit: "A", type: "number", step: 10, min: 1 },
+    { key: "csa_mm2", label: "Cross-section", unit: "mm²", type: "number", step: 5, min: 1 },
   ],
   load: [
     { key: "active_power_kw", label: "Active P", unit: "kW", type: "number", step: 1, min: 0 },
@@ -171,6 +172,7 @@ const FIELDS: { [K in ComponentType]: FieldDef[] } = {
       options: ["DOL", "star-delta", "soft-starter", "VFD"],
     },
     { key: "starting_pf", label: "Starting PF", type: "number", step: 0.01, min: 0.05, max: 1.0 },
+    { key: "starting_time_s", label: "Start time", unit: "s", type: "number", step: 0.5, min: 0.1, max: 120 },
   ],
   switch: [
     { key: "closed", label: "State", type: "boolean" },

@@ -24,7 +24,7 @@ export const threeBusPv: ProjectFile = {
       type: "cable",
       label: "TIE-CBL",
       position: { x: 300, y: 220 },
-      parameters: { resistance_ohm_per_km: 0.12, reactance_ohm_per_km: 0.30, length_m: 4000, ampacity_a: 400 },
+      parameters: { resistance_ohm_per_km: 0.12, reactance_ohm_per_km: 0.30, length_m: 4000, ampacity_a: 400, csa_mm2: 240 },
     },
     {
       id: "BB-2",

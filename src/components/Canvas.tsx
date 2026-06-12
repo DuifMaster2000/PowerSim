@@ -22,6 +22,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useStore } from "../store";
+import { GRADABLE_TYPES, GRADING_COLORS } from "../defaults";
 import type { ComponentType, BusbarParams, BusResult, BranchResult, LoadResult, SwitchParams, FuseParams, TransformerParams, ShortCircuitBranchFlow } from "../types";
 import { GenericNode, SyntheticBusNode, formatBusReadout, formatBranchReadout } from "./nodes";
 import { BusbarEdge } from "./busbarEdge";
@@ -56,6 +57,9 @@ function CanvasInner() {
   const setFaultBus = useStore((s) => s.setFaultBus);
   const setStartingMotorStore = useStore((s) => s.setStartingMotor);
   const duplicateComponent = useStore((s) => s.duplicateComponent);
+  const resultsTab = useStore((s) => s.resultsTab);
+  const gradingSelection = useStore((s) => s.gradingSelection);
+  const toggleGradingComponent = useStore((s) => s.toggleGradingComponent);
 
   // Local multi-select state — driven by onSelectionChange (no loop risk)
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -285,11 +289,15 @@ function CanvasInner() {
               ? `${(c.parameters as TransformerParams).primary_kv} kV / ${(c.parameters as TransformerParams).secondary_kv} kV`
               : undefined,
             baseOverlay,
+            gradingColor:
+              gradingSelection.indexOf(c.id) >= 0
+                ? GRADING_COLORS[gradingSelection.indexOf(c.id) % GRADING_COLORS.length]
+                : undefined,
           },
         };
       });
     },
-    [components, connections, busResultById, branchResultById, faultBusId, runMode, selectedComponentId, isShortCircuit, shortCircuit, contributionKaById, explainMode, baseMva],
+    [components, connections, busResultById, branchResultById, faultBusId, runMode, selectedComponentId, isShortCircuit, shortCircuit, contributionKaById, explainMode, baseMva, gradingSelection],
   );
 
   const nodes: Node[] = useMemo(
@@ -482,8 +490,13 @@ function CanvasInner() {
       const comp = components.find((c) => c.id === node.id);
       if (comp?.type === "busbar") setFaultBus(comp.id);
       if (comp?.type === "motor") setStartingMotorStore(comp.id);
+      // Grading tab open: clicking a curve-capable component toggles it in/out
+      // of the grading study (in addition to normal selection).
+      if (comp && resultsTab === "grading" && GRADABLE_TYPES.has(comp.type)) {
+        toggleGradingComponent(comp.id);
+      }
     },
-    [selectComponent, components, setFaultBus, setStartingMotorStore],
+    [selectComponent, components, setFaultBus, setStartingMotorStore, resultsTab, toggleGradingComponent],
   );
 
   // onSelectionChange mirrors React Flow's multi-select into selectedIds (for the

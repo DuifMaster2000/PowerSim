@@ -10,6 +10,18 @@ export const DEFAULT_CT_PARAMS: CtParams = {
   secondary_a: 5,
 };
 
+// Component types that can contribute a curve to the grading (TCC) study.
+// Breakers resolve to the relay that trips them; the rest plot directly.
+export const GRADABLE_TYPES: ReadonlySet<ComponentType> = new Set<ComponentType>([
+  "relay", "switch", "fuse", "motor", "cable", "transformer",
+]);
+
+// Shared curve palette: the canvas dot on a selected component and its curve
+// in the grading chart use the same colour, keyed by selection order.
+export const GRADING_COLORS = [
+  "#4ea1ff", "#38d39f", "#c792ea", "#ff8a65", "#ffd166", "#f87171", "#22d3ee", "#a3e635",
+];
+
 // Human-readable names for the IDMT curve families (UI dropdowns + chart
 // legend). Keyed by the IdmtCurve union so TS strict forces completeness.
 export const CURVE_LABELS: Record<IdmtCurve, string> = {
@@ -63,6 +75,7 @@ export const DEFAULT_PARAMS: { [K in ComponentType]: ParamsByType[K] } = {
     reactance_ohm_per_km: 0.08,
     length_m: 50,
     ampacity_a: 400,
+    csa_mm2: 120,
   },
   load: {
     active_power_kw: 100,
@@ -75,6 +88,7 @@ export const DEFAULT_PARAMS: { [K in ComponentType]: ParamsByType[K] } = {
     locked_rotor_current_ratio: 6.0,
     starting_method: "DOL",
     starting_pf: STARTING_PF_DEFAULTS.DOL,
+    starting_time_s: 5,
   },
   switch: {
     closed: true,
