@@ -21,50 +21,13 @@ import {
   type OnSelectionChangeParams,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useStore, isControlConnection } from "../store";
-import type { ComponentType, BusbarParams, BusResult, BranchResult, LoadResult, SwitchParams, FuseParams, TransformerParams, ShortCircuitBranchFlow, PowerComponent, Connection, CtParams } from "../types";
+import { useStore } from "../store";
+import type { ComponentType, BusbarParams, BusResult, BranchResult, LoadResult, SwitchParams, FuseParams, TransformerParams, ShortCircuitBranchFlow } from "../types";
 import { GenericNode, SyntheticBusNode, formatBusReadout, formatBranchReadout } from "./nodes";
 import { BusbarEdge } from "./busbarEdge";
 
 const nodeTypes = { generic: GenericNode, syntheticBus: SyntheticBusNode };
 const edgeTypes = { busbar: BusbarEdge };
-
-// Anchor point (visual centre) of a component in flow coords. Mirrors the
-// half-size convention used for synthetic-bus centroids so a CT clamped to a
-// wire lands on the same midpoint a synthetic-bus dot would.
-function componentAnchor(c: PowerComponent): { x: number; y: number } {
-  if (c.type === "busbar") {
-    return { x: c.position.x + ((c.parameters as BusbarParams).length_px ?? 200) / 2, y: c.position.y + 14 };
-  }
-  return { x: c.position.x + 40, y: c.position.y + 40 };
-}
-
-// Midpoint of a connection (between the two components' anchors).
-function connectionMidpoint(
-  conn: Connection,
-  byId: Map<string, PowerComponent>,
-): { x: number; y: number } | null {
-  const a = byId.get(conn.fromComponent);
-  const b = byId.get(conn.toComponent);
-  if (!a || !b) return null;
-  const pa = componentAnchor(a);
-  const pb = componentAnchor(b);
-  return { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 };
-}
-
-// Perpendicular distance from point p to the segment a–b.
-function distToSegment(
-  p: { x: number; y: number },
-  a: { x: number; y: number },
-  b: { x: number; y: number },
-): number {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const len2 = dx * dx + dy * dy;
-  let t = len2 > 0 ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2 : 0;
-  t = Math.max(0, Math.min(1, t));
-  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
-}
 
 function CanvasInner() {
   const components = useStore((s) => s.components);
@@ -83,7 +46,6 @@ function CanvasInner() {
   const projectLoadKey = useStore((s) => s.projectLoadKey);
 
   const addComponent = useStore((s) => s.addComponent);
-  const updateComponentParams = useStore((s) => s.updateComponentParams);
   const updateComponentPosition = useStore((s) => s.updateComponentPosition);
   const batchUpdatePositions = useStore((s) => s.batchUpdatePositions);
   const selectComponent = useStore((s) => s.selectComponent);
@@ -259,7 +221,6 @@ function CanvasInner() {
   // as the edge touching-selected highlight) so both always stay in sync.
   const componentNodes: Node[] = useMemo(
     () => {
-      const compById = new Map(components.map((c) => [c.id, c]));
       return components.map((c) => {
         let readout: { text: string; tone: "ok" | "warn" | "bad" } | undefined;
         if (isShortCircuit && shortCircuit) {
@@ -283,21 +244,6 @@ function CanvasInner() {
 
         const isBusbar = c.type === "busbar";
 
-        // A CT clamped to a conductor renders at that wire's midpoint and is
-        // locked in place (it follows the conductor, not free dragging).
-        let nodePosition = c.position;
-        let nodeDraggable: boolean | undefined = undefined;
-        if (c.type === "ct") {
-          const onId = (c.parameters as CtParams).on_connection_id;
-          const conn = onId ? connections.find((cc) => cc.id === onId) : undefined;
-          const mid = conn ? connectionMidpoint(conn, compById) : null;
-          if (mid) {
-            // Centre the 40px-wide chrome-less CT wrapper on the wire midpoint.
-            nodePosition = { x: mid.x - 20, y: mid.y - 20 };
-            nodeDraggable = false;
-          }
-        }
-
         // Explain-mode educational overlays — one short line under the label.
         let baseOverlay: string | undefined;
         if (explainMode) {
@@ -319,8 +265,7 @@ function CanvasInner() {
         return {
           id: c.id,
           type: "generic",
-          position: nodePosition,
-          draggable: nodeDraggable,
+          position: c.position,
           // Setting style.width on the node lets React Flow size the wrapper
           // correctly so handles and the NodeResizer line up with the visible bar.
           style: isBusbar
@@ -362,11 +307,9 @@ function CanvasInner() {
         const toComp = components.find((cc) => cc.id === c.toComponent);
         const involvesBusbar = fromComp?.type === "busbar" || toComp?.type === "busbar";
 
-        // Control wires (relay/CT signalling) are not part of the power circuit:
-        // render them dashed and muted, with no flow label or arrowhead.
-        const isControl =
-          fromComp?.type === "relay" || fromComp?.type === "ct" ||
-          toComp?.type === "relay" || toComp?.type === "ct";
+        // Control wires (relay → breaker signalling) are not part of the power
+        // circuit: render them dashed and muted, with no flow label or arrowhead.
+        const isControl = fromComp?.type === "relay" || toComp?.type === "relay";
         if (isControl) {
           return {
             id: c.id,
@@ -498,13 +441,17 @@ function CanvasInner() {
           tone === "live" ? "#22d3ee" :
           undefined;
 
+        // A wire carrying a CT uses the custom edge so the toroid badge renders
+        // at its midpoint (the custom edge handles both busbar and plain wires).
+        const hasCt = !!c.ct;
+
         return {
           id: c.id,
           source: c.fromComponent,
           sourceHandle: c.fromTerminal,
           target: c.toComponent,
           targetHandle: c.toTerminal,
-          type: involvesBusbar ? "busbar" : undefined,
+          type: involvesBusbar || hasCt ? "busbar" : undefined,
           className: touchesSelected ? "touching-selected" : undefined,
           style: toneColor ? { stroke: toneColor, strokeWidth: 2 } : undefined,
           markerStart: arrowAt === "source"
@@ -513,7 +460,7 @@ function CanvasInner() {
           markerEnd: arrowAt === "target"
             ? { type: MarkerType.ArrowClosed, color: toneColor ?? "#7f8fa6", width: 16, height: 16 }
             : undefined,
-          data: label ? { label, tone } : undefined,
+          data: label || hasCt ? { label, tone, ct: c.ct ?? undefined } : undefined,
         };
       }),
     [connections, selectedComponentId, components, loadFlow, loadResultById, branchResultById, edgeReadoutMode, isShortCircuit, contributionKaById, branchFlowById],
@@ -602,34 +549,9 @@ function CanvasInner() {
       const type = e.dataTransfer.getData("application/power-sim-type") as ComponentType;
       if (!type) return;
       const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
-
-      // A CT clamps onto the nearest power conductor under the drop point.
-      if (type === "ct") {
-        const byId = new Map(components.map((c) => [c.id, c]));
-        let nearestId: string | null = null;
-        let nearestDist = Infinity;
-        for (const conn of connections) {
-          if (isControlConnection(conn, components)) continue; // power wires only
-          const a = byId.get(conn.fromComponent);
-          const b = byId.get(conn.toComponent);
-          if (!a || !b) continue;
-          const d = distToSegment(position, componentAnchor(a), componentAnchor(b));
-          if (d < nearestDist) {
-            nearestDist = d;
-            nearestId = conn.id;
-          }
-        }
-        const id = addComponent(type, position);
-        // Snap threshold in flow units — generous so a drop "near" a wire takes.
-        if (nearestId && nearestDist <= 70) {
-          updateComponentParams<"ct">(id, { on_connection_id: nearestId });
-        }
-        return;
-      }
-
       addComponent(type, position);
     },
-    [addComponent, updateComponentParams, screenToFlowPosition, components, connections],
+    [addComponent, screenToFlowPosition],
   );
 
   const onPaneClick = useCallback(() => {

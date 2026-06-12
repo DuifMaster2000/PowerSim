@@ -5,9 +5,9 @@
 // =====================================================================
 
 import { useState, useEffect } from "react";
-import { useStore } from "../store";
-import { COMPONENT_LABELS, STARTING_PF_DEFAULTS, STANDARD_FUSE_SIZES_A, CURVE_LABELS } from "../defaults";
-import type { PowerComponent, ComponentType, MotorStartingMethod, CtParams } from "../types";
+import { useStore, isControlConnection } from "../store";
+import { COMPONENT_LABELS, STARTING_PF_DEFAULTS, STANDARD_FUSE_SIZES_A, CURVE_LABELS, DEFAULT_CT_PARAMS } from "../defaults";
+import type { PowerComponent, ComponentType, MotorStartingMethod, RelayParams } from "../types";
 import { Explain, Info } from "./Explain";
 
 function ConnectionPanel() {
@@ -15,12 +15,17 @@ function ConnectionPanel() {
   const connections = useStore((s) => s.connections);
   const components = useStore((s) => s.components);
   const removeConnection = useStore((s) => s.removeConnection);
+  const setConnectionCt = useStore((s) => s.setConnectionCt);
 
   const conn = connections.find((c) => c.id === selectedConnectionId);
   if (!conn) return null;
 
   const fromComp = components.find((c) => c.id === conn.fromComponent);
   const toComp = components.find((c) => c.id === conn.toComponent);
+
+  // CTs only make sense on a power conductor, not a relay's control wire.
+  const isControl = isControlConnection(conn, components);
+  const ct = conn.ct ?? null;
 
   return (
     <aside className="props">
@@ -50,6 +55,60 @@ function ConnectionPanel() {
           <input type="text" value={conn.toTerminal} readOnly style={{ opacity: 0.6 }} />
         </div>
       </div>
+
+      {!isControl && (
+        <div className="props-section">
+          <div className="field">
+            <h4 style={{ flex: 1 }}>Current transformer</h4>
+            <select
+              style={{ width: 90 }}
+              value={ct ? "yes" : "no"}
+              onChange={(e) =>
+                setConnectionCt(conn.id, e.target.value === "yes" ? { ...DEFAULT_CT_PARAMS } : null)
+              }
+            >
+              <option value="no">None</option>
+              <option value="yes">Fitted</option>
+            </select>
+          </div>
+          {ct && (
+            <>
+              <div className="field">
+                <label>Primary rating [A]</label>
+                <input
+                  style={{ width: 110 }}
+                  type="number"
+                  step={50}
+                  min={1}
+                  defaultValue={ct.primary_a}
+                  key={`${conn.id}-ct-primary`}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    if (isFinite(v) && v > 0) setConnectionCt(conn.id, { ...ct, primary_a: v });
+                  }}
+                />
+              </div>
+              <div className="field">
+                <label>Secondary rating [A]</label>
+                <select
+                  style={{ width: 110 }}
+                  value={String(ct.secondary_a)}
+                  onChange={(e) =>
+                    setConnectionCt(conn.id, { ...ct, secondary_a: parseFloat(e.target.value) as 1 | 5 })
+                  }
+                >
+                  <option value="1">1</option>
+                  <option value="5">5</option>
+                </select>
+              </div>
+              <p style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4, margin: "4px 2px 0" }}>
+                Select a relay and pick this wire as its measured CT to drive its pickup and fault marker.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="props-section">
         <button className="danger" onClick={() => removeConnection(conn.id)}>
           Delete connection
@@ -163,16 +222,6 @@ const FIELDS: { [K in ComponentType]: FieldDef[] } = {
     { key: "plug_setting", label: "Plug setting", unit: "×In", type: "number", step: 0.05, min: 0.1, max: 5 },
     { key: "time_multiplier", label: "Time multiplier (TMS)", type: "number", step: 0.05, min: 0.025, max: 1.5 },
     { key: "definite_time_s", label: "Definite time", unit: "s", type: "number", step: 0.05, min: 0.01 },
-  ],
-  ct: [
-    { key: "primary_a", label: "Primary rating", unit: "A", type: "number", step: 50, min: 1 },
-    {
-      key: "secondary_a",
-      label: "Secondary rating",
-      unit: "A",
-      type: "select",
-      options: ["1", "5"],
-    },
   ],
 };
 
@@ -335,8 +384,6 @@ export function PropertiesPanel() {
                       } as any);
                     } else if (comp.type === "fuse" && f.key === "rated_current_a") {
                       updateComponentParams(comp.id, { rated_current_a: parseFloat(v) } as any);
-                    } else if (comp.type === "ct" && f.key === "secondary_a") {
-                      updateComponentParams(comp.id, { secondary_a: parseFloat(v) } as any);
                     } else {
                       updateComponentParams(comp.id, { [f.key]: v } as any);
                     }
@@ -389,7 +436,6 @@ export function PropertiesPanel() {
       </div>
 
       {comp.type === "relay" && <RelayLinksSection relayId={comp.id} />}
-      {comp.type === "ct" && <CtConductorSection ctId={comp.id} />}
 
       <div className="props-section">
         <button className="danger" onClick={() => removeComponent(comp.id)}>
@@ -400,77 +446,54 @@ export function PropertiesPanel() {
   );
 }
 
-// Read-only summary of which conductor a CT is clamped onto. Resolved live
-// from the CT's on_connection_id (set when dropped on a wire).
-function CtConductorSection({ ctId }: { ctId: string }) {
+// Relay protection links: a dropdown to pick which CT-equipped wire the relay
+// measures, plus a read-only view of the breaker it trips (via control wire).
+function RelayLinksSection({ relayId }: { relayId: string }) {
   const components = useStore((s) => s.components);
   const connections = useStore((s) => s.connections);
-
-  const ct = components.find((c) => c.id === ctId);
-  const onId = ct ? (ct.parameters as CtParams).on_connection_id : null;
-  const conn = onId ? connections.find((c) => c.id === onId) : undefined;
-  const labelOf = (id: string) => components.find((c) => c.id === id)?.label ?? id;
-  const bound = !!conn;
-  const value = conn
-    ? `${labelOf(conn.fromComponent)} → ${labelOf(conn.toComponent)}`
-    : "— not on a conductor —";
-
-  return (
-    <div className="props-section">
-      <h4>Measured conductor</h4>
-      <div className="field">
-        <label>Conductor</label>
-        <input
-          type="text"
-          value={value}
-          readOnly
-          style={{ opacity: 0.7, color: bound ? undefined : "var(--warn)" }}
-        />
-      </div>
-      <p style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4, margin: "4px 2px 0" }}>
-        {bound
-          ? "Drag a new CT onto a different wire to re-clamp; delete the wire to release this one."
-          : "Drag this CT onto a power conductor so it sits inline on the wire it measures."}
-      </p>
-    </div>
-  );
-}
-
-// Read-only summary of what a relay is wired to via control wires: which CT
-// feeds it current, and which breaker it trips. Resolved live from connections.
-function RelayLinksSection({ relayId }: { relayId: string }) {
   const getRelayLinks = useStore((s) => s.getRelayLinks);
-  // Re-derive when components/connections change.
-  useStore((s) => s.connections);
+  const updateComponentParams = useStore((s) => s.updateComponentParams);
   const links = getRelayLinks(relayId);
 
-  const Row = ({ label, value, ok }: { label: string; value: string; ok: boolean }) => (
-    <div className="field">
-      <label>{label}</label>
-      <input
-        type="text"
-        value={value}
-        readOnly
-        style={{ opacity: 0.7, color: ok ? undefined : "var(--warn)" }}
-      />
-    </div>
-  );
+  const relay = components.find((c) => c.id === relayId);
+  const measuredId = relay ? (relay.parameters as RelayParams).measured_connection_id : null;
+
+  const labelOf = (id: string) => components.find((c) => c.id === id)?.label ?? id;
+  const ctWires = connections.filter((c) => c.ct);
 
   return (
     <div className="props-section">
       <h4>Protection links</h4>
-      <Row
-        label="CT"
-        value={links.ctLabel ? `${links.ctLabel} (${links.ct?.primary_a}/${links.ct?.secondary_a} A)` : "— none wired —"}
-        ok={!!links.ctId}
-      />
-      <Row
-        label="Trips breaker"
-        value={links.breakerLabel ?? "— none wired —"}
-        ok={!!links.breakerId}
-      />
+      <div className="field">
+        <label>Measured CT</label>
+        <select
+          style={{ width: 150 }}
+          value={measuredId ?? ""}
+          onChange={(e) =>
+            updateComponentParams(relayId, { measured_connection_id: e.target.value || null } as any)
+          }
+        >
+          <option value="">— none —</option>
+          {ctWires.map((c) => (
+            <option key={c.id} value={c.id}>
+              {labelOf(c.fromComponent)} → {labelOf(c.toComponent)} ({c.ct!.primary_a}/{c.ct!.secondary_a} A)
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="field">
+        <label>Trips breaker</label>
+        <input
+          type="text"
+          value={links.breakerLabel ?? "— none wired —"}
+          readOnly
+          style={{ opacity: 0.7, color: links.breakerId ? undefined : "var(--warn)" }}
+        />
+      </div>
       <p style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4, margin: "4px 2px 0" }}>
-        Draw a dashed control wire CT → relay → breaker to complete the chain.
+        {ctWires.length === 0
+          ? "Add a CT to a power wire first (select the wire), then pick it here. Draw a dashed control wire to the breaker."
+          : "Pick the CT this relay reads, then draw a dashed control wire to the breaker it trips."}
       </p>
     </div>
   );

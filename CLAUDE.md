@@ -192,6 +192,24 @@ Adds a basic protection layer on top of the existing power model. The power solv
 - **PropertiesPanel**: relay fields (curve select with friendly `CURVE_LABELS`, plug setting, TMS, definite-time shown only for DT); CT fields (primary A, 1/5 A secondary). Relay has a read-only **Protection links** section (resolved CT + breaker); CT has a read-only **Measured conductor** section showing the clamped conductor (warn-coloured when unbound).
 - **ResultsPanel**: now has a **Results / Grading** tab bar (`resultsTab`). The existing body became `ResultsContent`; the new `GradingCurves.tsx` renders a hand-built **log–log TCC chart** (one coloured curve per relay, dashed band per fuse, decade gridlines), **fault-current markers** + operate-time dots from `getRelayFaultCurrents()`, and a **grading-margin table** (Δt < 0.3 s = bad, < 0.4 s = warn). CSV export of curve data + margins.
 
+### v0.8 — CT becomes a wire property (not a draggable component)
+
+The v0.7 CT was a placeable node that "clamped" onto a conductor via `CtParams.on_connection_id`, which left the toroid sitting awkwardly on the wire. v0.8 makes a **current transformer a property of the power connection itself**.
+
+**Model:**
+- `Connection.ct?: CtParams | null` — a wire carries a CT iff this is set. `CtParams` is now just `{ primary_a, secondary_a }` (the `on_connection_id` back-reference is gone). The `ct` value of `ComponentType` is **removed** entirely — CTs are no longer components.
+- Relays reference their CT by connection id: `RelayParams.measured_connection_id`. Picked from a **dropdown** of CT-equipped wires in the relay's properties panel. The relay still trips its breaker over a dashed **control wire** (unchanged), so `resolveRelayLinks` now resolves the CT from `measured_connection_id` and the breaker from the control wire. `RelayLinks.ctId` → `ctConnectionId`.
+- The relay node dropped its `ct_in` terminal — it has only a `trip` source now.
+
+**Store:** new `setConnectionCt(connId, ct | null)` action (clears any relay's `measured_connection_id` when a CT is removed). `removeConnection` likewise detaches relays pointing at the deleted wire. `isControlConnection` is now relay-only.
+
+**UI:**
+- **Palette**: CT item removed.
+- **PropertiesPanel**: selecting a *power* wire shows a "Current transformer" section (None / Fitted + primary/secondary). The relay's "Protection links" section gained the **Measured CT** dropdown.
+- **Canvas / busbarEdge**: a wire with a CT renders a clickable **toroid badge** (`CtGlyph` + rating) at its midpoint via the custom edge; clicking it selects the wire. The custom edge is now used whenever a wire involves a busbar **or** carries a CT.
+
+**Back-compat:** `migrateLegacyCts` in `store.ts` runs on `loadProject` — it copies each legacy CT component's rating onto the conductor it clamped, repoints any relay that was control-wired to it via `measured_connection_id`, then drops the CT components and their control wires. Old `.psim.json` files load unchanged.
+
 ---
 
 ## Known limitations / v0.5 candidates

@@ -7,13 +7,15 @@
 
 import { BaseEdge, EdgeLabelRenderer, EdgeProps, useInternalNode } from "@xyflow/react";
 import { useStore } from "../store";
-import type { BusbarParams } from "../types";
+import type { BusbarParams, CtParams } from "../types";
+import { CtGlyph } from "./symbols";
 
 const DEFAULT_NON_BUS_WIDTH = 80;
 
 interface EdgeData {
   label?: string;
   tone?: "ok" | "warn" | "bad" | "live";
+  ct?: CtParams;
 }
 
 export function BusbarEdge(props: EdgeProps) {
@@ -22,6 +24,7 @@ export function BusbarEdge(props: EdgeProps) {
   const ed = data as EdgeData | undefined;
 
   const components = useStore((s) => s.components);
+  const selectConnection = useStore((s) => s.selectConnection);
   const srcNode = useInternalNode(source);
   const tgtNode = useInternalNode(target);
 
@@ -77,6 +80,26 @@ export function BusbarEdge(props: EdgeProps) {
         markerStart={markerStart}
         className={selected ? "selected" : undefined}
       />
+      {ed?.ct && (
+        <EdgeLabelRenderer>
+          <div
+            className={`edge-ct-badge ${selected ? "selected" : ""}`}
+            style={{
+              position: "absolute",
+              transform: `translate(-50%, -50%) translate(${midX}px, ${midY - (ed?.label ? 15 : 0)}px)`,
+              pointerEvents: "all",
+            }}
+            title={`CT ${ed.ct.primary_a}/${ed.ct.secondary_a} A — click to edit`}
+            onClick={(e) => {
+              e.stopPropagation();
+              selectConnection(id);
+            }}
+          >
+            <CtGlyph size={16} />
+            <span>{ed.ct.primary_a}/{ed.ct.secondary_a}</span>
+          </div>
+        </EdgeLabelRenderer>
+      )}
       {ed?.label && (
         <EdgeLabelRenderer>
           <div

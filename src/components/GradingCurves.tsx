@@ -52,9 +52,10 @@ export function GradingCurves() {
     return (
       <div className="results-body">
         <div className="props-empty" style={{ padding: 24 }}>
-          Add a relay (with a CT) or a fuse to the network, then this tab plots its
-          time–current characteristic. Wire CT → relay → breaker with dashed control
-          wires to anchor the relay's pickup and fault marker.
+          Add a relay or a fuse to the network, then this tab plots its time–current
+          characteristic. Fit a CT to a power wire and pick it as the relay's measured
+          CT, then draw a dashed control wire to the breaker, to anchor the relay's
+          pickup and fault marker.
         </div>
       </div>
     );

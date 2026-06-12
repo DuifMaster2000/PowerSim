@@ -2,7 +2,13 @@
 // Default parameter values when a new component is dropped on the canvas.
 // =====================================================================
 
-import type { ComponentType, ParamsByType, MotorStartingMethod, IdmtCurve } from "./types";
+import type { ComponentType, ParamsByType, MotorStartingMethod, IdmtCurve, CtParams } from "./types";
+
+// Default CT fitted to a wire when the user adds a current transformer to it.
+export const DEFAULT_CT_PARAMS: CtParams = {
+  primary_a: 200,
+  secondary_a: 5,
+};
 
 // Human-readable names for the IDMT curve families (UI dropdowns + chart
 // legend). Keyed by the IdmtCurve union so TS strict forces completeness.
@@ -85,11 +91,7 @@ export const DEFAULT_PARAMS: { [K in ComponentType]: ParamsByType[K] } = {
     plug_setting: 1.0,
     time_multiplier: 0.1,
     definite_time_s: 0.5,
-  },
-  ct: {
-    primary_a: 200,
-    secondary_a: 5,
-    on_connection_id: null,
+    measured_connection_id: null,
   },
 };
 
@@ -103,7 +105,6 @@ export const COMPONENT_LABELS: { [K in ComponentType]: string } = {
   switch: "Switch / CB",
   fuse: "Fuse",
   relay: "Relay (51)",
-  ct: "CT",
 };
 
 export const COMPONENT_PREFIXES: { [K in ComponentType]: string } = {
@@ -116,7 +117,6 @@ export const COMPONENT_PREFIXES: { [K in ComponentType]: string } = {
   switch: "Q",
   fuse: "F",
   relay: "RLY",
-  ct: "CT",
 };
 
 // How many terminals each component has (for connection validation).
@@ -129,10 +129,9 @@ export const TERMINAL_COUNT: { [K in ComponentType]: number } = {
   motor: 1,
   switch: 2,
   fuse: 2,
-  // Relays and CTs attach via control wires only — no required power terminals,
-  // so the connectivity check never blocks a run on an unwired relay/CT.
+  // Relays attach via a control wire only — no required power terminals, so the
+  // connectivity check never blocks a run on an unwired relay.
   relay: 0,
-  ct: 0,
 };
 
 // Which component types are "branch" elements (must connect bus-to-bus).
@@ -149,5 +148,4 @@ export const IS_BRANCH: { [K in ComponentType]: boolean } = {
   switch: true,
   fuse: true,
   relay: false,
-  ct: false,
 };

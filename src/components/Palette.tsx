@@ -16,7 +16,6 @@ const ORDER: ComponentType[] = [
   "fuse",
   "load",
   "motor",
-  "ct",
   "relay",
 ];
 

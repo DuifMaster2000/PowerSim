@@ -12,8 +12,7 @@ export type ComponentType =
   | "motor"
   | "switch"
   | "fuse"
-  | "relay"
-  | "ct";
+  | "relay";
 
 export interface XY {
   x: number;
@@ -94,15 +93,17 @@ export interface RelayParams {
   plug_setting: number;     // pickup as a multiple of the CT secondary (Is/In), e.g. 1.0
   time_multiplier: number;  // TMS — scales the whole IDMT curve (e.g. 0.05–1.5)
   definite_time_s: number;  // operate time used when curve === "DT"
+  // The connection (conductor) whose CT this relay measures. Picked from a
+  // dropdown of CT-equipped wires in the relay's properties panel. null when
+  // the relay has no CT assigned yet (surfaces a warning).
+  measured_connection_id: string | null;
 }
 
+// A current transformer is a property of a power connection (wire), not a
+// standalone component — it "clamps" onto the conductor the wire represents.
 export interface CtParams {
   primary_a: number;        // CT primary rating, e.g. 100 / 200 / 400
   secondary_a: 1 | 5;       // standard CT secondary
-  // The power connection (conductor) this CT is clamped onto. The CT renders
-  // inline at that wire's midpoint instead of as a free-floating node. null
-  // when the CT was dropped on empty canvas (unbound — surfaces a warning).
-  on_connection_id: string | null;
 }
 
 export type ParamsByType = {
@@ -115,7 +116,6 @@ export type ParamsByType = {
   switch: SwitchParams;
   fuse: FuseParams;
   relay: RelayParams;
-  ct: CtParams;
 };
 
 // ---------- Generic component shape ----------
@@ -134,6 +134,9 @@ export interface Connection {
   fromTerminal: string;
   toComponent: string;
   toTerminal: string;
+  // Optional current transformer clamped onto this conductor. Present iff the
+  // user has added a CT to the wire; relays reference it by this connection id.
+  ct?: CtParams | null;
 }
 
 // ---------- Project file ----------

@@ -208,17 +208,10 @@ function getTerminals(type: ComponentType): Terminal[] {
       return [{ id: "in", kind: "target", position: Position.Top }];
     case "motor":
       return [{ id: "in", kind: "target", position: Position.Top }];
-    case "ct":
-      // The CT clamps onto a power conductor (stored as on_connection_id), so it
-      // has no primary power wire — only a single control wire out to the relay.
-      // That wire is excluded from the power topology.
-      return [{ id: "secondary", kind: "source", position: Position.Right }];
     case "relay":
-      // Control device: reads the CT (top), trips a breaker (bottom).
-      return [
-        { id: "ct_in", kind: "target", position: Position.Top },
-        { id: "trip", kind: "source", position: Position.Bottom },
-      ];
+      // Control device: reads a CT (a property of a wire, chosen in its
+      // properties) and trips a breaker over a single control wire.
+      return [{ id: "trip", kind: "source", position: Position.Bottom }];
   }
 }
 
