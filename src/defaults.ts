@@ -12,8 +12,9 @@ export const DEFAULT_CT_PARAMS: CtParams = {
 
 // Component types that can contribute a curve to the grading (TCC) study.
 // Breakers resolve to the relay that trips them; the rest plot directly.
+// A busbar contributes a vertical fault-level line rather than a curve.
 export const GRADABLE_TYPES: ReadonlySet<ComponentType> = new Set<ComponentType>([
-  "relay", "switch", "fuse", "motor", "cable", "transformer",
+  "relay", "switch", "fuse", "motor", "cable", "transformer", "busbar",
 ]);
 
 // Shared curve palette: the canvas dot on a selected component and its curve

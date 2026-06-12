@@ -225,6 +225,7 @@ The grading tab previously plotted every relay + fuse, always. v0.9 makes the st
 - **Cable thermal damage** — `cableDamageCurvePoints(csaMm2, …)`: adiabatic I²t with k = 143 (Cu/XLPE, `CABLE_K_CU_XLPE`). New `CableParams.csa_mm2` (default 120 mm², legacy `?? 120`).
 - **Transformer damage + inrush** — `transformerDamageCurvePoints(inA)`: IEC 60076-5 / ANSI C57.109 category I (t = 1250/m², 3.5–25×In, In at primary kV) plus `transformerInrushPoint(inA)` (12×In @ 0.1 s) drawn as a ring marker.
 - A selected **breaker resolves to the relay(s) that trip it** (via `getRelayLinks().breakerId`); breakers with no relay produce a warning note under the chart, as do unwired motors.
+- A selected **busbar** draws a vertical **fault-level line** (Ik″) in the bus's colour, plus a fault-level table. Computed per selected bus via `getBusFaultLevels()` (`buildNetwork` + `runShortCircuit` at the current c-factor), independent of any short-circuit run. Only real busbars are gradable (synthetic buses aren't components).
 - Curve kinds are dash-coded (relay solid, fuse/motor/cable/transformer distinct dashes). Fault markers + grading-margin table cover only the *displayed* relays.
 - Axis caveat: curves are plotted at **each device's own voltage level** (axis label says so); currents are not referred across transformers.
 

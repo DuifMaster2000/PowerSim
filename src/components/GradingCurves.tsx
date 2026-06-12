@@ -80,6 +80,7 @@ export function GradingCurves() {
   const getRelayLinks = useStore((s) => s.getRelayLinks);
   const getRelayFaultCurrents = useStore((s) => s.getRelayFaultCurrents);
   const getMotorGradingData = useStore((s) => s.getMotorGradingData);
+  const getBusFaultLevels = useStore((s) => s.getBusFaultLevels);
   const gradingSelection = useStore((s) => s.gradingSelection);
   const toggleGradingComponent = useStore((s) => s.toggleGradingComponent);
   const clearGradingSelection = useStore((s) => s.clearGradingSelection);
@@ -150,6 +151,23 @@ export function GradingCurves() {
   const faultCurrents = getRelayFaultCurrents();
   const motorData = getMotorGradingData();
 
+  // Selected busbars contribute a vertical fault-level line (not a curve),
+  // coloured by their position in the selection (matches the canvas dot).
+  const busFaults = selectionMode ? getBusFaultLevels() : new Map<string, { faultA: number; label: string }>();
+  const busLines: { id: string; label: string; faultA: number; color: string }[] = [];
+  if (selectionMode) {
+    selection.forEach((id, idx) => {
+      const comp = byId.get(id)!;
+      if (comp.type !== "busbar") return;
+      const bf = busFaults.get(id);
+      if (bf) {
+        busLines.push({ id, label: bf.label, faultA: bf.faultA, color: GRADING_COLORS[idx % GRADING_COLORS.length] });
+      } else {
+        skipped.push(`${comp.label}: couldn't compute a fault level — needs a grid source and a solvable path.`);
+      }
+    });
+  }
+
   // ---- Domain bounds (log decades) ----
   const tMin = 0.01;
   const tMax = 100;
@@ -175,6 +193,7 @@ export function GradingCurves() {
     }
   }
   for (const fc of faultCurrents.values()) maxI = Math.max(maxI, fc.primaryA * 1.3);
+  for (const b of busLines) maxI = Math.max(maxI, b.faultA * 1.3);
   const xMaxDecade = Math.ceil(Math.log10(maxI));
   const xMinDecade = 1; // 10 A
   const iMin = Math.pow(10, xMinDecade);
@@ -350,6 +369,12 @@ export function GradingCurves() {
     for (const c of curves) {
       for (const p of c.points) rows.push([c.label, p.i.toFixed(1), p.t.toFixed(4)]);
     }
+    if (busLines.length > 0) {
+      rows.push([]);
+      rows.push(["Bus fault levels"]);
+      rows.push(["Bus", "Ik\" [kA]"]);
+      for (const b of busLines) rows.push([b.label, (b.faultA / 1000).toFixed(3)]);
+    }
     rows.push([]);
     rows.push(["Grading margins"]);
     rows.push(["Upstream", "Downstream", "At current [A]", "Δt [s]"]);
@@ -485,6 +510,33 @@ export function GradingCurves() {
             />
           ))}
 
+          {/* bus fault-level lines (behind curves, with a kA label at top) */}
+          {busLines.map((b) =>
+            b.faultA <= iMax ? (
+              <g key={`bus-${b.id}`}>
+                <line
+                  x1={xAt(b.faultA)}
+                  x2={xAt(b.faultA)}
+                  y1={padT}
+                  y2={padT + plotH}
+                  stroke={b.color}
+                  strokeWidth={1.6}
+                  opacity={0.9}
+                />
+                <text
+                  x={xAt(b.faultA)}
+                  y={padT + 9}
+                  fontSize={9}
+                  textAnchor="middle"
+                  fill={b.color}
+                  fontFamily="var(--font-mono)"
+                >
+                  {b.label} {(b.faultA / 1000).toFixed(1)}kA
+                </text>
+              </g>
+            ) : null,
+          )}
+
           {/* device curves */}
           {curves.map((c) => (
             <path
@@ -555,6 +607,25 @@ export function GradingCurves() {
               <div key={k}>⚠ {s}</div>
             ))}
           </div>
+        )}
+
+        {busLines.length > 0 && (
+          <table className="results-table" style={{ marginTop: 4 }}>
+            <thead>
+              <tr>
+                <th>Bus</th>
+                <th>Fault level Ik″ [kA]</th>
+              </tr>
+            </thead>
+            <tbody>
+              {busLines.map((b) => (
+                <tr key={`bf-${b.id}`}>
+                  <td style={{ color: b.color }}>{b.label}</td>
+                  <td>{(b.faultA / 1000).toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
 
         {markers.length > 0 && (

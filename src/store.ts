@@ -312,6 +312,12 @@ interface State {
   // voltage, for the motor start curve on the TCC chart. Needs the network
   // (bus kV), so it lives behind the store to preserve the layering rule.
   getMotorGradingData: () => Map<string, { flcA: number; startA: number; startTimeS: number }>;
+
+  // Grading: fault level (Ik" in primary amps) at each busbar in the grading
+  // selection, for the vertical fault-level lines on the TCC chart. Computed
+  // fresh per selected bus using the current c-factor — independent of any
+  // short-circuit run the user may have triggered.
+  getBusFaultLevels: () => Map<string, { faultA: number; label: string }>;
 }
 
 const takeSnapshot = (s: State): Snapshot => ({
@@ -878,6 +884,31 @@ export const useStore = create<State>((set, get) => ({
         startA: flcA * ratio,
         startTimeS: p.starting_time_s ?? 5, // legacy pre-v0.9 motors
       });
+    }
+    return out;
+  },
+
+  getBusFaultLevels: () => {
+    const out = new Map<string, { faultA: number; label: string }>();
+    const selected = new Set(get().gradingSelection);
+    const busbars = get().components.filter((c) => c.type === "busbar" && selected.has(c.id));
+    if (busbars.length === 0) return out;
+    let net;
+    try {
+      net = buildNetwork(get().exportProject());
+    } catch {
+      return out;
+    }
+    const cFactor = get().shortCircuitCFactor;
+    for (const bb of busbars) {
+      const idx = net.busIndexById.get(bb.id);
+      if (idx === undefined) continue; // orphaned / not energised
+      try {
+        const res = runShortCircuit(net, idx, cFactor);
+        out.set(bb.id, { faultA: res.ikSymKa * 1000, label: bb.label });
+      } catch {
+        // skip a bus that can't be solved (e.g. islanded section)
+      }
     }
     return out;
   },
