@@ -159,6 +159,7 @@ export const DEFAULT_PARAMS: { [K in ComponentType]: ParamsByType[K] } = {
     thermal_enabled: false,
     thermal_tau_min: 15,
     thermal_k: 1.05,
+    thermal_base_a: 0,
     measured_connection_id: null,
   },
 };

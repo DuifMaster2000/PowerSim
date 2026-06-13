@@ -120,6 +120,7 @@ export interface RelayParams {
   thermal_enabled: boolean;
   thermal_tau_min: number;  // thermal time constant τ [minutes]
   thermal_k: number;        // overload factor (×base current allowed continuously, ~1.0–1.2)
+  thermal_base_a: number;   // base/full-load current Ib [A]; 0 = auto (use the CT primary rating)
   // The connection (conductor) whose CT this relay measures. Picked from a
   // dropdown of CT-equipped wires in the relay's properties panel. null when
   // the relay has no CT assigned yet (surfaces a warning).

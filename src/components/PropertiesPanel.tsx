@@ -128,6 +128,7 @@ interface FieldDef {
   step?: number;
   min?: number;
   max?: number;
+  hint?: string; // small muted note rendered under the field
 }
 
 const FIELDS: { [K in ComponentType]: FieldDef[] } = {
@@ -235,6 +236,7 @@ const FIELDS: { [K in ComponentType]: FieldDef[] } = {
     { key: "thermal_enabled", label: "Thermal (49)", type: "boolean" },
     { key: "thermal_tau_min", label: "Time constant τ", unit: "min", type: "number", step: 1, min: 1, max: 600 },
     { key: "thermal_k", label: "Overload factor k", type: "number", step: 0.05, min: 1, max: 1.5 },
+    { key: "thermal_base_a", label: "Base current Ib", unit: "A", type: "number", step: 10, min: 0, hint: "0 = auto (CT primary)" },
   ],
 };
 
@@ -272,7 +274,7 @@ function relayFieldVisible(f: FieldDef, params: Record<string, unknown>): boolea
   if (f.key === "stage2_time_s" && params.stage2_curve !== "DT") return false;
   if (["stage3_pickup", "stage3_time_s"].includes(f.key) && !params.stage3_enabled) return false;
   if (f.key.startsWith("thermal") && !multiStage) return false;
-  if (["thermal_tau_min", "thermal_k"].includes(f.key) && !params.thermal_enabled) return false;
+  if (["thermal_tau_min", "thermal_k", "thermal_base_a"].includes(f.key) && !params.thermal_enabled) return false;
   return true;
 }
 
@@ -506,6 +508,11 @@ export function PropertiesPanel() {
             {fieldErrors[f.key] && (
               <span style={{ color: "var(--bad)", fontSize: 11, paddingLeft: 2 }}>
                 {fieldErrors[f.key]}
+              </span>
+            )}
+            {!fieldErrors[f.key] && f.hint && (
+              <span style={{ color: "var(--text-muted)", fontSize: 10, paddingLeft: 2 }}>
+                {f.hint}
               </span>
             )}
           </div>

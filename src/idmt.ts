@@ -254,7 +254,10 @@ export function thermalCurvePoints(
   tMin = 0.01,
 ): CurvePoint[] {
   if (!(relay.thermal_enabled ?? false)) return [];
-  const ib = ct ? ct.primary_a : FALLBACK_CT_PRIMARY_A;
+  // Base current Ib: an explicit setting if given, otherwise the CT primary
+  // rating (the CT is sized to the motor FLC).
+  const baseSetting = relay.thermal_base_a ?? 0;
+  const ib = baseSetting > 0 ? baseSetting : ct ? ct.primary_a : FALLBACK_CT_PRIMARY_A;
   const k = relay.thermal_k ?? 1.05;
   const tauS = (relay.thermal_tau_min ?? 15) * 60;
   const pickup = k * ib;
