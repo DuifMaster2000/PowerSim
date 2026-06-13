@@ -299,6 +299,7 @@ A modal sandbox that drives `Relay869ThermalModel` so you can *see* the dynamic 
 - `src/components/ThermalModeler.tsx`: a `.modal` with (1) a thermal-settings grid (curve type Standard/IEC, OL, FLA, TDM or k/τ1/τ2, cooling τ run/stop, hot/cold ratio, unbalance K, trip function, alarm, RTD bias), (2) an editable **scenario** table of phases (×FLA, duration, motor status, unbalance I2/I1 %, optional RTD °C), and (3) a live hand-built SVG chart of **TCU vs time** with a current overlay (right axis), 100% trip + alarm lines, phase bands, and a trip marker. Recomputed live via `useMemo` (no Run button).
 - Store: view-only `thermalModelerOpen` + `thermalModelerSeed` + `openThermalModeler(seed)` / `closeThermalModeler`. Opened from a **GE-869 relay's** properties panel ("Open thermal scenario modeler"), seeded with the relay's FLA (thermal base / CT primary), OL and TDM. Default TD multiplier is 4 (the GE default of 1.0 nuisance-trips a 6×FLA start).
 - Not persisted to the project file; purely exploratory. RTD bias is wired (per-phase temperature column); the voltage-dependent module is not exposed (experimental).
+- Polish: a self-contained always-on `InfoTip` (fixed-positioned, not clipped by the modal scroll) gives a plain-English `HELP[...]` tooltip on every setting + scenario column; a colour **legend** under the chart (TCU / current / trip / alarm); phase labels are width-culled so they never overlap (wide phases labelled, slivers named only in the table).
 
 ---
 

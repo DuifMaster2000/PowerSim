@@ -6,7 +6,7 @@
 // engine. Not tied to the project file — purely exploratory.
 // =====================================================================
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { useStore } from "../store";
 import {
   Relay869ThermalModel,
@@ -83,6 +83,53 @@ function simulate(settings: Relay869ThermalSettings, phases: Phase[]): SimResult
 
 const STATUSES: MotorStatus[] = ["STARTING", "RUNNING", "OVERLOAD", "STOPPED"];
 
+// Small always-on info badge with a hover/focus tooltip. Positioned fixed so
+// it isn't clipped by the modal's scroll container.
+function InfoTip({ text }: { text: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const show = () => ref.current && setRect(ref.current.getBoundingClientRect());
+  const hide = () => setRect(null);
+  return (
+    <>
+      <span ref={ref} className="tm-info" tabIndex={0} aria-label={text}
+        onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide}>i</span>
+      {rect && (
+        <div className="tm-tip" style={{ position: "fixed", top: rect.bottom + 6, left: Math.max(8, Math.min(rect.left - 4, window.innerWidth - 268)) }}>
+          {text}
+        </div>
+      )}
+    </>
+  );
+}
+
+// Plain-English help for every setting (shown via the info badges).
+const HELP: Record<string, string> = {
+  overload_curve: "Which trip-time characteristic to use. Standard is GE's motor curve set; IEC is the alternative IEC 255-8 hot/cold replica.",
+  curve_effect: "Cutoff references the curve to FLA (conservative, default). Shift references it to OL×FLA — for motors rated on the overload point.",
+  fla: "Full-load amps: the motor's rated running current. Every thermal calculation is measured relative to this.",
+  ol: "Overload factor (service factor): how far above FLA the motor may run continuously. Overload — and heating — begins above OL×FLA.",
+  td_multiplier: "Time dial: slides the whole curve up/down in time. Higher = slower trip, so the curve can ride above the motor start.",
+  iec_curve_k_factor: "IEC equivalent of OL — sets the continuous-overload threshold (k×FLA) for the IEC curve.",
+  iec_time_constant_1_min: "IEC heating time constant for running overloads (stator-limited region, k×FLA up to 2k×FLA).",
+  iec_time_constant_2_min: "IEC heating time constant during starts / very high current (rotor-limited region, above 2k×FLA). Usually faster than τ1.",
+  cool_time_const_running_min: "How fast the motor sheds heat (TCU falls) while running below overload.",
+  cool_time_const_stopped_min: "How fast a stopped motor cools — usually slower than running (no forced ventilation).",
+  hot_cold_safe_stall_ratio: "Sets the warm 'floor' TCU never drops below while running. Below 1.0 makes a hot restart trip sooner than a cold one.",
+  unbalance_bias_k: "Inflates the effective heating current when phases are unbalanced. K=8 ≈ NEMA derating. 0 turns it off.",
+  trip_function: "What the thermal trip output does. Trip self-resets at 97% TCU; Latched holds until a reset.",
+  alarm: "Early warning: asserts an alarm at the pickup % before the 100% trip.",
+  alarm_pickup_pct: "TCU % at which the thermal alarm asserts.",
+  rtd_bias: "Use a measured stator temperature as a parallel TCU estimate; the relay then uses whichever is higher.",
+  rtd_bias_center_c: "Temperature mapped to the running 'warm' TCU level on the RTD-bias curve.",
+  rtd_bias_max_c: "Temperature mapped to 100% TCU — at/above this the RTD estimate forces a trip.",
+  ph_mult: "Phase current as a multiple of motor FLA.",
+  ph_dur: "How long this phase lasts, in seconds.",
+  ph_status: "Motor state — selects the cooling constant (running vs stopped) and the IEC hot/cold curve.",
+  ph_i2: "Negative-sequence as % of current (phase unbalance). Combines with Unbalance K to heat the model faster.",
+  ph_rtd: "Stator temperature during this phase, used by RTD bias.",
+};
+
 // Numeric settings the modeler exposes as <input type=number> (all number-typed).
 type NumKey =
   | "fla" | "ol" | "td_multiplier" | "iec_curve_k_factor"
@@ -141,9 +188,21 @@ export function ThermalModeler() {
   let acc = 0;
   const bounds = phases.map((p) => (acc += p.durS));
 
-  const num = (k: NumKey, label: string, step = 1, min?: number, max?: number, unit?: string) => (
+  // Label a phase only when its own width has room for the text — this labels
+  // the wide phases and skips narrow slivers (which the scenario table names),
+  // so labels never overlap.
+  const phaseLabels = phases
+    .map((p, i) => {
+      const x0 = xAt(i ? bounds[i - 1] : 0);
+      const widthPx = xAt(bounds[i]) - x0;
+      if (widthPx < p.label.length * 4.4 + 6) return null;
+      return { x: x0 + 3, label: p.label, key: p.id };
+    })
+    .filter((v): v is { x: number; label: string; key: number } => v !== null);
+
+  const num = (k: NumKey, label: string, step = 1, min?: number, max?: number, unit?: string, help?: string) => (
     <label className="tm-field">
-      <span>{label}{unit ? ` [${unit}]` : ""}</span>
+      <span>{label}{unit ? ` [${unit}]` : ""}{help && <InfoTip text={help} />}</span>
       <input
         type="number" step={step} min={min} max={max}
         value={settings[k]}
@@ -166,7 +225,7 @@ export function ThermalModeler() {
             <h4>Thermal model settings</h4>
             <div className="tm-grid">
               <label className="tm-field">
-                <span>Overload curve</span>
+                <span>Overload curve<InfoTip text={HELP.overload_curve} /></span>
                 <select value={settings.overload_curve} onChange={(e) => set("overload_curve", e.target.value as Relay869ThermalSettings["overload_curve"])}>
                   <option value="Standard">Standard</option>
                   <option value="IEC">IEC 255-8</option>
@@ -174,25 +233,25 @@ export function ThermalModeler() {
               </label>
               {!isIEC && (
                 <label className="tm-field">
-                  <span>Curve effect</span>
+                  <span>Curve effect<InfoTip text={HELP.curve_effect} /></span>
                   <select value={settings.curve_effect} onChange={(e) => set("curve_effect", e.target.value as Relay869ThermalSettings["curve_effect"])}>
                     <option value="Cutoff">Cutoff</option>
                     <option value="Shift">Shift</option>
                   </select>
                 </label>
               )}
-              {num("fla", "Motor FLA", 1, 1, undefined, "A")}
-              {num("ol", "Overload factor (OL)", 0.05, 1, 1.5)}
-              {!isIEC && num("td_multiplier", "TD multiplier", 0.5, 1, 25)}
-              {isIEC && num("iec_curve_k_factor", "k factor", 0.05, 1, 1.5)}
-              {isIEC && num("iec_time_constant_1_min", "τ1 stator", 1, 0, 1000, "min")}
-              {isIEC && num("iec_time_constant_2_min", "τ2 rotor", 1, 0, 1000, "min")}
-              {num("cool_time_const_running_min", "Cool τ running", 1, 0, 1000, "min")}
-              {num("cool_time_const_stopped_min", "Cool τ stopped", 1, 0, 1000, "min")}
-              {num("hot_cold_safe_stall_ratio", "Hot/cold ratio", 0.05, 0.01, 1)}
-              {num("unbalance_bias_k", "Unbalance K", 1, 0, 19)}
+              {num("fla", "Motor FLA", 1, 1, undefined, "A", HELP.fla)}
+              {num("ol", "Overload factor (OL)", 0.05, 1, 1.5, undefined, HELP.ol)}
+              {!isIEC && num("td_multiplier", "TD multiplier", 0.5, 1, 25, undefined, HELP.td_multiplier)}
+              {isIEC && num("iec_curve_k_factor", "k factor", 0.05, 1, 1.5, undefined, HELP.iec_curve_k_factor)}
+              {isIEC && num("iec_time_constant_1_min", "τ1 stator", 1, 0, 1000, "min", HELP.iec_time_constant_1_min)}
+              {isIEC && num("iec_time_constant_2_min", "τ2 rotor", 1, 0, 1000, "min", HELP.iec_time_constant_2_min)}
+              {num("cool_time_const_running_min", "Cool τ running", 1, 0, 1000, "min", HELP.cool_time_const_running_min)}
+              {num("cool_time_const_stopped_min", "Cool τ stopped", 1, 0, 1000, "min", HELP.cool_time_const_stopped_min)}
+              {num("hot_cold_safe_stall_ratio", "Hot/cold ratio", 0.05, 0.01, 1, undefined, HELP.hot_cold_safe_stall_ratio)}
+              {num("unbalance_bias_k", "Unbalance K", 1, 0, 19, undefined, HELP.unbalance_bias_k)}
               <label className="tm-field">
-                <span>Trip function</span>
+                <span>Trip function<InfoTip text={HELP.trip_function} /></span>
                 <select value={settings.trip_function} onChange={(e) => set("trip_function", e.target.value as Relay869ThermalSettings["trip_function"])}>
                   <option value="Trip">Trip</option>
                   <option value="LatchedTrip">Latched</option>
@@ -201,16 +260,16 @@ export function ThermalModeler() {
                 </select>
               </label>
               <label className="tm-field tm-check">
-                <span>Alarm</span>
+                <span>Alarm<InfoTip text={HELP.alarm} /></span>
                 <input type="checkbox" checked={settings.alarm_enabled} onChange={(e) => set("alarm_enabled", e.target.checked)} />
               </label>
-              {settings.alarm_enabled && num("alarm_pickup_pct", "Alarm pickup", 5, 0, 100, "%")}
+              {settings.alarm_enabled && num("alarm_pickup_pct", "Alarm pickup", 5, 0, 100, "%", HELP.alarm_pickup_pct)}
               <label className="tm-field tm-check">
-                <span>RTD bias</span>
+                <span>RTD bias<InfoTip text={HELP.rtd_bias} /></span>
                 <input type="checkbox" checked={settings.rtd_bias_enabled} onChange={(e) => set("rtd_bias_enabled", e.target.checked)} />
               </label>
-              {settings.rtd_bias_enabled && num("rtd_bias_center_c", "RTD center", 5, 0, 300, "°C")}
-              {settings.rtd_bias_enabled && num("rtd_bias_max_c", "RTD max", 5, 0, 300, "°C")}
+              {settings.rtd_bias_enabled && num("rtd_bias_center_c", "RTD center", 5, 0, 300, "°C", HELP.rtd_bias_center_c)}
+              {settings.rtd_bias_enabled && num("rtd_bias_max_c", "RTD max", 5, 0, 300, "°C", HELP.rtd_bias_max_c)}
             </div>
             <p className="tm-note">
               Pickup = OL × FLA = <b>{(settings.ol * settings.fla).toFixed(0)} A</b>.
@@ -224,8 +283,12 @@ export function ThermalModeler() {
             <table className="tm-phases">
               <thead>
                 <tr>
-                  <th>Phase</th><th>×FLA</th><th>Duration</th><th>Status</th><th>I2/I1 %</th>
-                  {settings.rtd_bias_enabled && <th>RTD °C</th>}
+                  <th>Phase</th>
+                  <th>×FLA<InfoTip text={HELP.ph_mult} /></th>
+                  <th>Duration<InfoTip text={HELP.ph_dur} /></th>
+                  <th>Status<InfoTip text={HELP.ph_status} /></th>
+                  <th>I2/I1 %<InfoTip text={HELP.ph_i2} /></th>
+                  {settings.rtd_bias_enabled && <th>RTD °C<InfoTip text={HELP.ph_rtd} /></th>}
                   <th></th>
                 </tr>
               </thead>
@@ -267,16 +330,13 @@ export function ThermalModeler() {
               {[0, curMax / 2, curMax].map((c) => (
                 <text key={c} x={padL + plotW + 6} y={yCur(c) + 3} fontSize={9} textAnchor="start" fill="var(--accent-dim)" fontFamily="var(--font-mono)">{c.toFixed(0)}×</text>
               ))}
-              {/* phase bands + boundaries */}
+              {/* phase boundary lines */}
               {bounds.map((b, i) => (
-                <g key={i}>
-                  <line x1={xAt(b)} x2={xAt(b)} y1={padT} y2={padT + plotH} stroke="var(--border)" strokeDasharray="2 3" opacity={0.6} />
-                  {phases[i] && (
-                    <text x={xAt((i ? bounds[i - 1] : 0))} y={padT - 4} fontSize={8} fill="var(--text-dim)" fontFamily="var(--font-mono)">
-                      {phases[i].label}
-                    </text>
-                  )}
-                </g>
+                <line key={`b-${i}`} x1={xAt(b)} x2={xAt(b)} y1={padT} y2={padT + plotH} stroke="var(--border)" strokeDasharray="2 3" opacity={0.6} />
+              ))}
+              {/* phase labels (overlap-culled) */}
+              {phaseLabels.map((pl) => (
+                <text key={`pl-${pl.key}`} x={pl.x + 2} y={padT - 4} fontSize={8} fill="var(--text-dim)" fontFamily="var(--font-mono)">{pl.label}</text>
               ))}
               {/* 100% trip + alarm lines */}
               <line x1={padL} x2={padL + plotW} y1={yTcu(100)} y2={yTcu(100)} stroke="var(--bad)" strokeWidth={1.2} strokeDasharray="5 3" />
@@ -295,6 +355,12 @@ export function ThermalModeler() {
               <text x={padL - 34} y={padT + plotH / 2} fontSize={9} fill="var(--accent)" textAnchor="middle" transform={`rotate(-90 ${padL - 34} ${padT + plotH / 2})`}>TCU %</text>
               <text x={padL + plotW / 2} y={H - 4} fontSize={9} fill="var(--text-dim)" textAnchor="middle">time → {fmtTime(sim.total)} total</text>
             </svg>
+            <div className="tm-legend">
+              <span><i className="tm-sw tm-sw-tcu" /> TCU — thermal capacity used (left axis)</span>
+              <span><i className="tm-sw tm-sw-cur" /> Motor current (right axis, ×FLA)</span>
+              <span><i className="tm-sw tm-sw-trip" /> 100% → trip</span>
+              {settings.alarm_enabled && <span><i className="tm-sw tm-sw-alarm" /> alarm pickup</span>}
+            </div>
             <div className="tm-summary">
               <span><b style={{ color: "var(--accent)" }}>{sim.finalTcu.toFixed(1)}%</b> final TCU</span>
               <span>peak {sim.peak.toFixed(1)}%</span>
