@@ -235,7 +235,7 @@ const FIELDS: { [K in ComponentType]: FieldDef[] } = {
     // Thermal overload element (49) — base current taken from the CT rating.
     { key: "thermal_enabled", label: "Thermal (49)", type: "boolean" },
     { key: "thermal_tau_min", label: "Time constant τ", unit: "min", type: "number", step: 1, min: 1, max: 600 },
-    { key: "thermal_curve_mult", label: "Overload curve mult", type: "number", step: 0.5, min: 1, max: 15 },
+    { key: "thermal_curve_mult", label: "TD multiplier", type: "number", step: 0.5, min: 1, max: 25 },
     { key: "thermal_k", label: "Overload factor k", type: "number", step: 0.05, min: 1, max: 1.5 },
     { key: "thermal_base_a", label: "Base current Ib", unit: "A", type: "number", step: 10, min: 0, hint: "0 = auto (CT primary)" },
   ],
@@ -256,7 +256,8 @@ const GE_LABELS: Record<string, string> = {
   stage3_pickup: "50P-2 pickup",
   stage3_time_s: "50P-2 time",
   thermal_enabled: "Thermal O/L (49)",
-  thermal_k: "Service factor",
+  thermal_curve_mult: "TD multiplier",
+  thermal_k: "Overload factor (OL)",
   thermal_base_a: "Motor FLA",
 };
 
