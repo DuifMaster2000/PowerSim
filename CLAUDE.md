@@ -292,6 +292,14 @@ A time-domain Thermal Capacity Used (TCU) state model of the GE 869 thermal elem
 - Exact Standard-curve coefficients are the single source of truth: `geStandardTripTime()` is exported and now also drives the grading chart's GE thermal curve in `idmt.ts` (replacing the earlier `87.4/(m²−1)` approximation).
 - `src/protection/relay869Thermal.harness.ts` (`npx tsx …`): validates t_trip at 2/3/5×FLA against the manual table (29.16 / 10.93 / 3.64 s, exact), plus scenarios — steady-overload trip time, cold-start settling at the hot/cold floor, running-vs-stopped cooling constants, unbalance biasing (K=8), and power-loss memory.
 
+### v0.16 — Thermal scenario modeler (UI for the 869 dynamic model)
+
+A modal sandbox that drives `Relay869ThermalModel` so you can *see* the dynamic settings work.
+
+- `src/components/ThermalModeler.tsx`: a `.modal` with (1) a thermal-settings grid (curve type Standard/IEC, OL, FLA, TDM or k/τ1/τ2, cooling τ run/stop, hot/cold ratio, unbalance K, trip function, alarm, RTD bias), (2) an editable **scenario** table of phases (×FLA, duration, motor status, unbalance I2/I1 %, optional RTD °C), and (3) a live hand-built SVG chart of **TCU vs time** with a current overlay (right axis), 100% trip + alarm lines, phase bands, and a trip marker. Recomputed live via `useMemo` (no Run button).
+- Store: view-only `thermalModelerOpen` + `thermalModelerSeed` + `openThermalModeler(seed)` / `closeThermalModeler`. Opened from a **GE-869 relay's** properties panel ("Open thermal scenario modeler"), seeded with the relay's FLA (thermal base / CT primary), OL and TDM. Default TD multiplier is 4 (the GE default of 1.0 nuisance-trips a 6×FLA start).
+- Not persisted to the project file; purely exploratory. RTD bias is wired (per-phase temperature column); the voltage-dependent module is not exposed (experimental).
+
 ---
 
 ## Known limitations / v0.5 candidates

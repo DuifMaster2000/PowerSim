@@ -548,6 +548,7 @@ export function PropertiesPanel() {
       </div>
 
       {comp.type === "relay" && <RelayLinksSection relayId={comp.id} />}
+      {comp.type === "relay" && (params.relay_model as string) === "GE-869" && <Ge869ModelerButton relayId={comp.id} />}
 
       <div className="props-section">
         <button className="danger" onClick={() => removeComponent(comp.id)}>
@@ -555,6 +556,34 @@ export function PropertiesPanel() {
         </button>
       </div>
     </aside>
+  );
+}
+
+// Opens the GE 869 thermal scenario modeler, seeded from this relay's FLA
+// (thermal base / CT primary), overload factor and TD multiplier.
+function Ge869ModelerButton({ relayId }: { relayId: string }) {
+  const components = useStore((s) => s.components);
+  const getRelayLinks = useStore((s) => s.getRelayLinks);
+  const openThermalModeler = useStore((s) => s.openThermalModeler);
+  const relay = components.find((c) => c.id === relayId);
+  if (!relay) return null;
+  const p = relay.parameters as RelayParams;
+  const links = getRelayLinks(relayId);
+  const fla = (p.thermal_base_a ?? 0) > 0 ? p.thermal_base_a : links.ct?.primary_a ?? 100;
+  return (
+    <div className="props-section">
+      <h4>Thermal model (49)</h4>
+      <button
+        style={{ width: "100%" }}
+        onClick={() => openThermalModeler({ fla, ol: p.thermal_k ?? 1.05, tdm: p.thermal_curve_mult ?? 1 })}
+      >
+        Open thermal scenario modeler →
+      </button>
+      <p style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4, margin: "4px 2px 0" }}>
+        Simulate Thermal Capacity Used (TCU) over a current-vs-time scenario — the dynamic
+        side of the relay (cooling, hot/cold, unbalance) that a static curve can't show.
+      </p>
+    </div>
   );
 }
 
