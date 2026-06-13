@@ -251,6 +251,16 @@ Transformers now follow the **same flexible-neighbour rule** as switches / fuses
 
 This is **validation-only**; the network builder already handled it. Closed switches are absorbed into the adjacent bus (so a transformer reached through breakers lands on the real bus on each side), and where a bus is genuinely needed (e.g. transformer → cable, or transformer → motor with nothing else on that side) a **synthetic bus** is created and base-kV is propagated through the transformer ratio onto it. Verified: `SRC → BB → breaker → TX → breaker → motor` solves with the secondary as a synthetic 0.4 kV bus.
 
+### v0.12 — Reference-voltage referral on the grading chart
+
+Curves across a transformer are at different voltages, so their currents aren't directly comparable on one axis. v0.12 adds a **"Refer to:" dropdown** in the Grading header that refers every curve to one common voltage.
+
+- `gradingRefKv: number | null` in the store (view-only; null = each device's own level; reset on new/load). Action `setGradingRefKv`.
+- New store getter `getComponentKv()` → `Map<componentId, kV>`: bus members get their bus base-kV; transformers/cables get their from-bus (primary) base-kV. Uses `buildNetwork`, preserving the UI/solver layering rule.
+- Referral is a horizontal shift on the log-current axis: `I_plot = I_actual × (kV_device / refKv)` (power-conserving across the ratio). In `GradingCurves`, each curve/marker/bus-line carries a `factor`; the actual-amp points stay intact and the factor is applied only at plot time (and curves are sampled to `iMax / factor` so the referred curve still reaches the axis edge). A relay's voltage is its **breaker's** bus kV (fallback: the CT conductor's bus).
+- **Tables stay in actual amps** (physically honest); only the chart is referred. A caption + CSV header note state the reference. Devices whose kV can't be resolved are plotted unreferred with a warning note.
+- Dropdown options are the distinct voltage levels present in the network; axis label updates to "referred to X kV".
+
 ---
 
 ## Known limitations / v0.5 candidates

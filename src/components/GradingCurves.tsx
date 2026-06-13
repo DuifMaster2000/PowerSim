@@ -56,7 +56,8 @@ interface DeviceCurve {
   label: string;
   color: string;
   dash?: string;
-  points: { i: number; t: number }[];
+  points: { i: number; t: number }[]; // actual amps at the device's own voltage
+  factor: number; // ×current to refer onto the chart's reference voltage (1 = no referral)
 }
 
 interface DotMarker {
@@ -65,6 +66,7 @@ interface DotMarker {
   t: number;
   color: string;
   label: string;
+  factor: number;
 }
 
 // A device contributing curves to the study, resolved from the selection.
@@ -72,6 +74,7 @@ interface Entry {
   device: PowerComponent; // the curve's own device (relay, fuse, motor, cable, transformer)
   kind: "relay" | "fuse" | "motor" | "cable" | "transformer";
   color: string;
+  kv?: number; // the device's voltage level (for referral); undefined if unknown
   via?: string; // breaker label when a relay entered via its breaker
 }
 
@@ -82,12 +85,35 @@ export function GradingCurves() {
   const getRelayFaultCurrents = useStore((s) => s.getRelayFaultCurrents);
   const getMotorGradingData = useStore((s) => s.getMotorGradingData);
   const getBusFaultLevels = useStore((s) => s.getBusFaultLevels);
+  const getComponentKv = useStore((s) => s.getComponentKv);
   const gradingSelection = useStore((s) => s.gradingSelection);
+  const gradingRefKv = useStore((s) => s.gradingRefKv);
+  const setGradingRefKv = useStore((s) => s.setGradingRefKv);
   const toggleGradingComponent = useStore((s) => s.toggleGradingComponent);
   const clearGradingSelection = useStore((s) => s.clearGradingSelection);
 
   // touch connections so links re-resolve when wiring changes
   void connections;
+
+  // Per-component voltage level + referral factor onto the chosen reference kV.
+  const compKv = getComponentKv();
+  const refKv = gradingRefKv;
+  const factorFor = (kv: number | undefined): number =>
+    refKv && kv && kv > 0 ? kv / refKv : 1;
+  const kvLevels = Array.from(new Set(Array.from(compKv.values()).filter((v) => v > 0))).sort((a, b) => b - a);
+  const fmtKv = (kv: number) => `${+kv.toFixed(3)} kV`;
+
+  // A relay has no power bus of its own — its current is referred at the
+  // voltage of the breaker it trips (or, failing that, the CT's conductor).
+  const relayKv = (relayId: string): number | undefined => {
+    const links = getRelayLinks(relayId);
+    if (links.breakerId && compKv.has(links.breakerId)) return compKv.get(links.breakerId);
+    if (links.ctConnectionId) {
+      const conn = connections.find((c) => c.id === links.ctConnectionId);
+      if (conn) return compKv.get(conn.fromComponent) ?? compKv.get(conn.toComponent);
+    }
+    return undefined;
+  };
 
   const byId = new Map(components.map((c) => [c.id, c]));
   const selection = gradingSelection.filter((id) => byId.has(id));
@@ -119,7 +145,7 @@ export function GradingCurves() {
       if (comp.type === "relay") {
         if (!seenRelays.has(comp.id)) {
           seenRelays.add(comp.id);
-          entries.push({ device: comp, kind: "relay", color });
+          entries.push({ device: comp, kind: "relay", color, kv: relayKv(comp.id) });
         }
       } else if (comp.type === "switch") {
         const linked = allRelays.filter((r) => getRelayLinks(r.id).breakerId === comp.id);
@@ -129,23 +155,32 @@ export function GradingCurves() {
         for (const r of linked) {
           if (seenRelays.has(r.id)) continue;
           seenRelays.add(r.id);
-          entries.push({ device: r, kind: "relay", color, via: comp.label });
+          entries.push({ device: r, kind: "relay", color, via: comp.label, kv: relayKv(r.id) });
         }
       } else if (comp.type === "fuse") {
-        entries.push({ device: comp, kind: "fuse", color });
+        entries.push({ device: comp, kind: "fuse", color, kv: compKv.get(comp.id) });
       } else if (comp.type === "motor") {
-        entries.push({ device: comp, kind: "motor", color });
+        entries.push({ device: comp, kind: "motor", color, kv: compKv.get(comp.id) });
       } else if (comp.type === "cable") {
-        entries.push({ device: comp, kind: "cable", color });
+        entries.push({ device: comp, kind: "cable", color, kv: compKv.get(comp.id) });
       } else if (comp.type === "transformer") {
-        entries.push({ device: comp, kind: "transformer", color });
+        entries.push({ device: comp, kind: "transformer", color, kv: compKv.get(comp.id) });
       }
     });
   } else {
     allRelays.forEach((r, idx) =>
-      entries.push({ device: r, kind: "relay", color: GRADING_COLORS[idx % GRADING_COLORS.length] }),
+      entries.push({ device: r, kind: "relay", color: GRADING_COLORS[idx % GRADING_COLORS.length], kv: relayKv(r.id) }),
     );
-    allFuses.forEach((f) => entries.push({ device: f, kind: "fuse", color: FUSE_COLOR }));
+    allFuses.forEach((f) => entries.push({ device: f, kind: "fuse", color: FUSE_COLOR, kv: compKv.get(f.id) }));
+  }
+
+  // If a reference voltage is set, note any device whose level we can't resolve.
+  if (refKv) {
+    for (const e of entries) {
+      if (e.kv === undefined) {
+        skipped.push(`${e.device.label}: voltage level unknown — plotted at its own current (not referred).`);
+      }
+    }
   }
 
   const relayEntries = entries.filter((e) => e.kind === "relay");
@@ -155,14 +190,14 @@ export function GradingCurves() {
   // Selected busbars contribute a vertical fault-level line (not a curve),
   // coloured by their position in the selection (matches the canvas dot).
   const busFaults = selectionMode ? getBusFaultLevels() : new Map<string, { faultA: number; label: string }>();
-  const busLines: { id: string; label: string; faultA: number; color: string }[] = [];
+  const busLines: { id: string; label: string; faultA: number; color: string; factor: number }[] = [];
   if (selectionMode) {
     selection.forEach((id, idx) => {
       const comp = byId.get(id)!;
       if (comp.type !== "busbar") return;
       const bf = busFaults.get(id);
       if (bf) {
-        busLines.push({ id, label: bf.label, faultA: bf.faultA, color: GRADING_COLORS[idx % GRADING_COLORS.length] });
+        busLines.push({ id, label: bf.label, faultA: bf.faultA, color: GRADING_COLORS[idx % GRADING_COLORS.length], factor: factorFor(compKv.get(id)) });
       } else {
         skipped.push(`${comp.label}: couldn't compute a fault level — needs a grid source and a solvable path.`);
       }
@@ -175,28 +210,33 @@ export function GradingCurves() {
 
   let maxI = 1000;
   for (const e of entries) {
+    const f = factorFor(e.kv);
     if (e.kind === "relay") {
       const links = getRelayLinks(e.device.id);
       const pickup = primaryPickupA(e.device.parameters as RelayParams, links.ct);
       const highest = relayHighestPickupA(e.device.parameters as RelayParams, links.ct);
-      maxI = Math.max(maxI, pickup * 30, highest * 2);
+      maxI = Math.max(maxI, pickup * 30 * f, highest * 2 * f);
     } else if (e.kind === "fuse") {
-      maxI = Math.max(maxI, (e.device.parameters as FuseParams).rated_current_a * 30);
+      maxI = Math.max(maxI, (e.device.parameters as FuseParams).rated_current_a * 30 * f);
     } else if (e.kind === "motor") {
       const md = motorData.get(e.device.id);
-      if (md) maxI = Math.max(maxI, md.startA * 2);
+      if (md) maxI = Math.max(maxI, md.startA * 2 * f);
     } else if (e.kind === "cable") {
       const csa = (e.device.parameters as CableParams).csa_mm2 ?? 120;
       // Cover the damage current at 1 s so a useful stretch of the curve shows.
-      maxI = Math.max(maxI, CABLE_K_CU_XLPE * csa * 1.2);
+      maxI = Math.max(maxI, CABLE_K_CU_XLPE * csa * 1.2 * f);
     } else if (e.kind === "transformer") {
       const p = e.device.parameters as TransformerParams;
       const inA = (p.rated_mva * 1000) / (Math.sqrt(3) * p.primary_kv);
-      maxI = Math.max(maxI, inA * 27.5);
+      maxI = Math.max(maxI, inA * 27.5 * f);
     }
   }
-  for (const fc of faultCurrents.values()) maxI = Math.max(maxI, fc.primaryA * 1.3);
-  for (const b of busLines) maxI = Math.max(maxI, b.faultA * 1.3);
+  // Fault currents are at each relay's own bus voltage — refer them too.
+  for (const e of relayEntries) {
+    const fc = faultCurrents.get(e.device.id);
+    if (fc) maxI = Math.max(maxI, fc.primaryA * 1.3 * factorFor(e.kv));
+  }
+  for (const b of busLines) maxI = Math.max(maxI, b.faultA * 1.3 * b.factor);
   const xMaxDecade = Math.ceil(Math.log10(maxI));
   const xMinDecade = 1; // 10 A
   const iMin = Math.pow(10, xMinDecade);
@@ -207,10 +247,12 @@ export function GradingCurves() {
   const dots: DotMarker[] = [];
   for (const e of entries) {
     const c = e.device;
+    const f = factorFor(e.kv);
+    const sampleMax = iMax / f; // actual amps; ×f lands the curve at iMax on the chart
     if (e.kind === "relay") {
       const links = getRelayLinks(c.id);
       const rp = c.parameters as RelayParams;
-      const pts = idmtCurvePoints(rp, links.ct, iMax, tMax, tMin);
+      const pts = idmtCurvePoints(rp, links.ct, sampleMax, tMax, tMin);
       if (pts.length === 0) continue;
       const stageCount = 1 + ((rp.stage2_enabled ?? false) ? 1 : 0) + ((rp.stage3_enabled ?? false) ? 1 : 0);
       curves.push({
@@ -219,9 +261,10 @@ export function GradingCurves() {
         color: e.color,
         dash: DASH.relay,
         points: pts,
+        factor: f,
       });
     } else if (e.kind === "fuse") {
-      const pts = fuseTccPoints(c.parameters as FuseParams, iMax, tMax, tMin);
+      const pts = fuseTccPoints(c.parameters as FuseParams, sampleMax, tMax, tMin);
       if (pts.length === 0) continue;
       curves.push({
         id: c.id,
@@ -229,6 +272,7 @@ export function GradingCurves() {
         color: e.color,
         dash: DASH.fuse,
         points: pts,
+        factor: f,
       });
     } else if (e.kind === "motor") {
       const md = motorData.get(c.id);
@@ -244,10 +288,11 @@ export function GradingCurves() {
         color: e.color,
         dash: DASH.motor,
         points: pts,
+        factor: f,
       });
     } else if (e.kind === "cable") {
       const csa = (c.parameters as CableParams).csa_mm2 ?? 120;
-      const pts = cableDamageCurvePoints(csa, iMax, tMax, tMin);
+      const pts = cableDamageCurvePoints(csa, sampleMax, tMax, tMin);
       if (pts.length === 0) continue;
       curves.push({
         id: c.id,
@@ -255,6 +300,7 @@ export function GradingCurves() {
         color: e.color,
         dash: DASH.cable,
         points: pts,
+        factor: f,
       });
     } else if (e.kind === "transformer") {
       const p = c.parameters as TransformerParams;
@@ -267,6 +313,7 @@ export function GradingCurves() {
         color: e.color,
         dash: DASH.transformer,
         points: pts,
+        factor: f,
       });
       const inrush = transformerInrushPoint(inA);
       dots.push({
@@ -275,6 +322,7 @@ export function GradingCurves() {
         t: inrush.t,
         color: e.color,
         label: `${c.label} inrush ~12×In`,
+        factor: f,
       });
     }
   }
@@ -301,9 +349,9 @@ export function GradingCurves() {
 
   const clampT = (t: number) => Math.min(Math.max(t, tMin), tMax);
 
-  const pathFor = (pts: { i: number; t: number }[]) =>
+  const pathFor = (pts: { i: number; t: number }[], factor = 1) =>
     pts
-      .map((p, k) => `${k === 0 ? "M" : "L"}${xAt(p.i).toFixed(1)},${yAt(clampT(p.t)).toFixed(1)}`)
+      .map((p, k) => `${k === 0 ? "M" : "L"}${xAt(p.i * factor).toFixed(1)},${yAt(clampT(p.t)).toFixed(1)}`)
       .join(" ");
 
   // Decade gridlines / ticks.
@@ -322,6 +370,7 @@ export function GradingCurves() {
     color: string;
     faultA: number;
     operateS: number;
+    factor: number;
   }[] = [];
   relayEntries.forEach((e) => {
     const fc = faultCurrents.get(e.device.id);
@@ -334,6 +383,7 @@ export function GradingCurves() {
       color: e.color,
       faultA: fc.primaryA,
       operateS: t,
+      factor: factorFor(e.kv),
     });
   });
 
@@ -370,7 +420,11 @@ export function GradingCurves() {
   }
 
   const exportCsv = () => {
-    const rows: string[][] = [["Device", "Current [A]", "Operate/withstand time [s]"]];
+    const rows: string[][] = [];
+    rows.push([`Reference voltage: ${refKv ? fmtKv(refKv) : "each device's own level"}`]);
+    rows.push(["Currents below are actual amps at each device's own voltage."]);
+    rows.push([]);
+    rows.push(["Device", "Current [A]", "Operate/withstand time [s]"]);
     for (const c of curves) {
       for (const p of c.points) rows.push([c.label, p.i.toFixed(1), p.t.toFixed(4)]);
     }
@@ -400,6 +454,20 @@ export function GradingCurves() {
               : `showing all relays & fuses · click a breaker, motor, fuse, cable or transformer on the canvas to grade a section`}
             {faultCurrents.size === 0 && " · run a short-circuit for fault markers"}
           </span>
+          <label style={{ fontSize: 11, color: "var(--text-dim)", marginLeft: 8, display: "inline-flex", alignItems: "center", gap: 4 }}>
+            Refer to:
+            <select
+              value={refKv ?? ""}
+              onChange={(e) => setGradingRefKv(e.target.value ? parseFloat(e.target.value) : null)}
+              style={{ fontSize: 11, padding: "1px 4px" }}
+              title="Refer every curve to one common voltage level via the transformer ratios"
+            >
+              <option value="">each device's own kV</option>
+              {kvLevels.map((kv) => (
+                <option key={kv} value={kv}>{fmtKv(kv)}</option>
+              ))}
+            </select>
+          </label>
           <button onClick={exportCsv} style={{ fontSize: 11, padding: "1px 8px", marginLeft: 8 }}>
             Export CSV
           </button>
@@ -497,15 +565,15 @@ export function GradingCurves() {
             textAnchor="middle"
             fill="var(--text-dim)"
           >
-            Current [A] — at each device's own voltage level
+            {refKv ? `Current [A] — referred to ${fmtKv(refKv)}` : "Current [A] — at each device's own voltage level"}
           </text>
 
-          {/* fault markers (behind curves) */}
+          {/* fault markers (behind curves) — referred to the chart voltage */}
           {markers.map((m) => (
             <line
               key={`fm-${m.relayId}`}
-              x1={xAt(Math.min(m.faultA, iMax))}
-              x2={xAt(Math.min(m.faultA, iMax))}
+              x1={xAt(Math.min(m.faultA * m.factor, iMax))}
+              x2={xAt(Math.min(m.faultA * m.factor, iMax))}
               y1={padT}
               y2={padT + plotH}
               stroke={m.color}
@@ -517,11 +585,11 @@ export function GradingCurves() {
 
           {/* bus fault-level lines (behind curves, with a kA label at top) */}
           {busLines.map((b) =>
-            b.faultA <= iMax ? (
+            b.faultA * b.factor <= iMax ? (
               <g key={`bus-${b.id}`}>
                 <line
-                  x1={xAt(b.faultA)}
-                  x2={xAt(b.faultA)}
+                  x1={xAt(b.faultA * b.factor)}
+                  x2={xAt(b.faultA * b.factor)}
                   y1={padT}
                   y2={padT + plotH}
                   stroke={b.color}
@@ -529,7 +597,7 @@ export function GradingCurves() {
                   opacity={0.9}
                 />
                 <text
-                  x={xAt(b.faultA)}
+                  x={xAt(b.faultA * b.factor)}
                   y={padT + 9}
                   fontSize={9}
                   textAnchor="middle"
@@ -546,7 +614,7 @@ export function GradingCurves() {
           {curves.map((c) => (
             <path
               key={c.id}
-              d={pathFor(c.points)}
+              d={pathFor(c.points, c.factor)}
               fill="none"
               stroke={c.color}
               strokeWidth={1.8}
@@ -556,17 +624,17 @@ export function GradingCurves() {
 
           {/* transformer inrush points */}
           {dots.map((d) =>
-            d.i <= iMax ? (
+            d.i * d.factor <= iMax ? (
               <g key={d.id}>
                 <circle
-                  cx={xAt(d.i)}
+                  cx={xAt(d.i * d.factor)}
                   cy={yAt(clampT(d.t))}
                   r={4}
                   fill="none"
                   stroke={d.color}
                   strokeWidth={1.6}
                 />
-                <circle cx={xAt(d.i)} cy={yAt(clampT(d.t))} r={1.4} fill={d.color} />
+                <circle cx={xAt(d.i * d.factor)} cy={yAt(clampT(d.t))} r={1.4} fill={d.color} />
                 <title>{d.label}</title>
               </g>
             ) : null,
@@ -577,7 +645,7 @@ export function GradingCurves() {
             isFinite(m.operateS) ? (
               <circle
                 key={`dot-${m.relayId}`}
-                cx={xAt(Math.min(m.faultA, iMax))}
+                cx={xAt(Math.min(m.faultA * m.factor, iMax))}
                 cy={yAt(clampT(m.operateS))}
                 r={3.5}
                 fill={m.color}
@@ -605,6 +673,12 @@ export function GradingCurves() {
             </g>
           ))}
         </svg>
+
+        {refKv && (
+          <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "2px 4px", lineHeight: 1.5 }}>
+            Curves referred to {fmtKv(refKv)} through transformer ratios (Iₚₗₒₜ = I × kV<sub>device</sub> / {fmtKv(refKv)}). Tables below show actual amps at each device.
+          </div>
+        )}
 
         {skipped.length > 0 && (
           <div style={{ fontSize: 11, color: "var(--warn)", padding: "2px 4px", lineHeight: 1.5 }}>

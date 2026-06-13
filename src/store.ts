@@ -240,6 +240,11 @@ interface State {
   // View-only; not part of the project file or undo history.
   gradingSelection: string[];
 
+  // Grading chart reference voltage (kV). null = plot each device at its own
+  // voltage level (no referral). When set, every curve/marker is referred to
+  // this voltage through the transformer ratios. View-only.
+  gradingRefKv: number | null;
+
   // Undo / redo history
   past: Snapshot[];
   future: Snapshot[];
@@ -279,6 +284,7 @@ interface State {
   setResultsTab: (v: "results" | "grading") => void;
   toggleGradingComponent: (id: string) => void;
   clearGradingSelection: () => void;
+  setGradingRefKv: (kv: number | null) => void;
   markSaved: () => void;
 
   newProject: () => void;
@@ -318,6 +324,11 @@ interface State {
   // fresh per selected bus using the current c-factor — independent of any
   // short-circuit run the user may have triggered.
   getBusFaultLevels: () => Map<string, { faultA: number; label: string }>;
+
+  // Grading: voltage level (kV) of every component, for referring TCC curves
+  // to a common voltage. Buses/terminals get their bus base-kV; transformers
+  // and cables get their from-bus (primary) base-kV.
+  getComponentKv: () => Map<string, number>;
 }
 
 const takeSnapshot = (s: State): Snapshot => ({
@@ -354,6 +365,7 @@ const newProjectState = () => ({
   projectLoadKey: 0,
   isDirty: false,
   gradingSelection: [] as string[],
+  gradingRefKv: null as number | null,
   past: [] as Snapshot[],
   future: [] as Snapshot[],
 });
@@ -564,6 +576,7 @@ export const useStore = create<State>((set, get) => ({
         : [...s.gradingSelection, id],
     })),
   clearGradingSelection: () => set({ gradingSelection: [] }),
+  setGradingRefKv: (kv) => set({ gradingRefKv: kv }),
   markSaved: () => set({ isDirty: false }),
 
   newProject: () => set((s) => ({ ...newProjectState(), projectLoadKey: s.projectLoadKey + 1 })),
@@ -599,6 +612,7 @@ export const useStore = create<State>((set, get) => ({
       faultBusId: null,
       startingMotorId: null,
       gradingSelection: [],
+      gradingRefKv: null,
       past: [],
       future: [],
       // Restore saved viewport if present; otherwise signal a fit-to-view.
@@ -911,5 +925,27 @@ export const useStore = create<State>((set, get) => ({
       }
     }
     return out;
+  },
+
+  getComponentKv: () => {
+    const map = new Map<string, number>();
+    let net;
+    try {
+      net = buildNetwork(get().exportProject());
+    } catch {
+      return map;
+    }
+    for (const b of net.buses) {
+      const kv = b.baseKv || b.nominalKv;
+      if (!kv) continue;
+      for (const cid of b.memberComponentIds ?? []) map.set(cid, kv);
+    }
+    // Branches (transformer/cable) straddle two buses — pin them to their
+    // from-bus (the transformer's primary) base-kV.
+    for (const br of net.branches) {
+      const kv = net.buses[br.fromBus].baseKv || net.buses[br.fromBus].nominalKv;
+      if (kv) map.set(br.id, kv);
+    }
+    return map;
   },
 }));
