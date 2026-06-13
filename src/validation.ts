@@ -3,21 +3,21 @@
 // Errors block a run; warnings inform but allow it.
 // =====================================================================
 
-import type { ProjectFile, ValidationIssue, SwitchParams, TransformerParams, ComponentType, CtParams } from "./types";
+import type { ProjectFile, ValidationIssue, SwitchParams, TransformerParams, ComponentType, RelayParams } from "./types";
 import { TERMINAL_COUNT, IS_BRANCH } from "./defaults";
 
-// Switches, fuses, and cables can sit directly between two non-bus components
-// — the network builder synthesises a bus node automatically when needed.
-// Transformers still need a true bus on each side (different voltage levels).
+// Every branch element (transformer, cable, switch, fuse) may sit directly
+// against a bus, a terminal device, or another in-line device — the network
+// builder absorbs closed switches into the adjacent bus and synthesises a
+// bus node wherever one is genuinely needed (e.g. a transformer feeding a
+// cable). So a breaker right at a transformer's terminals is valid without
+// drawing an explicit busbar in between.
 const FLEXIBLE_NEIGHBOUR_ALLOWED: ReadonlySet<ComponentType> = new Set([
-  "busbar", "load", "motor", "switch", "fuse", "cable", "grid_source",
+  "busbar", "load", "motor", "switch", "fuse", "cable", "grid_source", "transformer",
 ]);
 
-function isValidBranchNeighbour(branchType: ComponentType, otherType: ComponentType): boolean {
-  if (branchType === "switch" || branchType === "fuse" || branchType === "cable") {
-    return FLEXIBLE_NEIGHBOUR_ALLOWED.has(otherType);
-  }
-  return otherType === "busbar";
+function isValidBranchNeighbour(otherType: ComponentType): boolean {
+  return FLEXIBLE_NEIGHBOUR_ALLOWED.has(otherType);
 }
 
 export function validateProject(project: ProjectFile): ValidationIssue[] {
@@ -72,24 +72,25 @@ export function validateProject(project: ProjectFile): ValidationIssue[] {
     }
   }
 
-  // 3. Branch elements must connect to allowed neighbours.
-  //    Transformers / cables: bus-to-bus only.
-  //    Switches: may also chain to terminals (load, motor, grid source) or other switches.
+  // 3. Branch elements (transformer / cable / switch / fuse) must connect to
+  //    allowed neighbours. All four now share the flexible rule: a bus, a
+  //    terminal device, or another in-line device. The network builder
+  //    synthesises a bus between them where one is electrically needed.
   for (const conn of project.connections) {
     const a = compById.get(conn.fromComponent);
     const b = compById.get(conn.toComponent);
     if (!a || !b) continue;
-    // Relay/CT control wires are not part of the power circuit — skip the
+    // Relay control wires are not part of the power circuit — skip the
     // power-neighbour rules for them.
-    if (a.type === "relay" || a.type === "ct" || b.type === "relay" || b.type === "ct") continue;
-    if (IS_BRANCH[a.type] && !isValidBranchNeighbour(a.type, b.type)) {
+    if (a.type === "relay" || b.type === "relay") continue;
+    if (IS_BRANCH[a.type] && !isValidBranchNeighbour(b.type)) {
       issues.push({
         level: "error",
         message: `${a.label} cannot connect to a ${b.type} on this side.`,
         componentId: a.id,
       });
     }
-    if (IS_BRANCH[b.type] && !isValidBranchNeighbour(b.type, a.type)) {
+    if (IS_BRANCH[b.type] && !isValidBranchNeighbour(a.type)) {
       issues.push({
         level: "error",
         message: `${b.label} cannot connect to a ${a.type} on this side.`,
@@ -141,8 +142,8 @@ export function validateProject(project: ProjectFile): ValidationIssue[] {
   }
 
   // 6. Protection links (warnings only — never block a power run).
-  //    A relay needs a CT to measure current and a breaker to trip; a CT needs
-  //    a relay to feed. Links are ordinary connections to the relay/CT.
+  //    A relay needs a CT (a property of a wire it measures) and a breaker to
+  //    trip. The breaker is reached over an ordinary control wire to the relay.
   const neighbourTypes = (compId: string): ComponentType[] => {
     const types: ComponentType[] = [];
     for (const conn of project.connections) {
@@ -158,23 +159,14 @@ export function validateProject(project: ProjectFile): ValidationIssue[] {
   };
 
   for (const comp of project.components) {
-    if (comp.type === "relay") {
-      const nbrs = neighbourTypes(comp.id);
-      if (!nbrs.includes("ct")) {
-        issues.push({ level: "warning", message: `${comp.label}: no CT connected — relay has no current measurement.`, componentId: comp.id });
-      }
-      if (!nbrs.includes("switch")) {
-        issues.push({ level: "warning", message: `${comp.label}: not attached to a breaker — relay cannot trip anything.`, componentId: comp.id });
-      }
-    } else if (comp.type === "ct") {
-      const nbrs = neighbourTypes(comp.id);
-      if (!nbrs.includes("relay")) {
-        issues.push({ level: "warning", message: `${comp.label}: not connected to a relay.`, componentId: comp.id });
-      }
-      const onId = (comp.parameters as CtParams).on_connection_id;
-      if (!onId || !project.connections.some((c) => c.id === onId)) {
-        issues.push({ level: "warning", message: `${comp.label}: not clamped onto a conductor — drag it onto a power wire to measure current.`, componentId: comp.id });
-      }
+    if (comp.type !== "relay") continue;
+    const measuredId = (comp.parameters as RelayParams).measured_connection_id;
+    const measured = measuredId ? project.connections.find((c) => c.id === measuredId) : undefined;
+    if (!measured || !measured.ct) {
+      issues.push({ level: "warning", message: `${comp.label}: no CT assigned — pick a CT-equipped wire in the relay's properties.`, componentId: comp.id });
+    }
+    if (!neighbourTypes(comp.id).includes("switch")) {
+      issues.push({ level: "warning", message: `${comp.label}: not attached to a breaker — relay cannot trip anything.`, componentId: comp.id });
     }
   }
 

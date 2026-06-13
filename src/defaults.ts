@@ -2,7 +2,66 @@
 // Default parameter values when a new component is dropped on the canvas.
 // =====================================================================
 
-import type { ComponentType, ParamsByType, MotorStartingMethod, IdmtCurve } from "./types";
+import type { ComponentType, ParamsByType, MotorStartingMethod, IdmtCurve, CtParams, RelayModel } from "./types";
+
+// Per-model relay setting ranges and available curves — mirrors what the real
+// device accepts so the properties panel can't be set outside the hardware.
+export interface RelayModelSpec {
+  label: string;
+  plugMin: number;
+  plugMax: number;
+  plugStep: number;
+  tmsMin: number;
+  tmsMax: number;
+  dtMin: number;
+  dtMax: number;
+  curves: IdmtCurve[];
+  // 1 = single IDMT stage; 3 = low + high + instantaneous (3I> / 3I>> / 3I>>>)
+  stages: 1 | 3;
+}
+
+export const RELAY_MODELS: Record<RelayModel, RelayModelSpec> = {
+  // Conservative classic-IDMT ranges (electromechanical-era TMS dial).
+  generic: {
+    label: "Generic IDMT",
+    plugMin: 0.1, plugMax: 5, plugStep: 0.05,
+    tmsMin: 0.025, tmsMax: 1.5,
+    dtMin: 0.01, dtMax: 100,
+    curves: ["IEC-SI", "IEC-VI", "IEC-EI", "IEC-LTI", "DT"],
+    stages: 1,
+  },
+  // ABB Relion 615 series, phase overcurrent stages:
+  //   3I>   PHLPTOC  start 0.05–5.00 ×In, TMS 0.05–15.0, DT 0.04–200 s
+  //   3I>>  PHHPTOC  start 0.10–40.00 ×In, IDMT or DT
+  //   3I>>> PHIPTOC  start 1.00–40.00 ×In, DT only, ≥0.02 s
+  "ABB-REM615": {
+    label: "ABB REM615 (Relion)",
+    plugMin: 0.05, plugMax: 5, plugStep: 0.05,
+    tmsMin: 0.05, tmsMax: 15,
+    dtMin: 0.04, dtMax: 200,
+    curves: ["IEC-SI", "IEC-VI", "IEC-EI", "IEC-LTI", "ABB-RI", "DT"],
+    stages: 3,
+  },
+};
+
+// Default CT fitted to a wire when the user adds a current transformer to it.
+export const DEFAULT_CT_PARAMS: CtParams = {
+  primary_a: 200,
+  secondary_a: 5,
+};
+
+// Component types that can contribute a curve to the grading (TCC) study.
+// Breakers resolve to the relay that trips them; the rest plot directly.
+// A busbar contributes a vertical fault-level line rather than a curve.
+export const GRADABLE_TYPES: ReadonlySet<ComponentType> = new Set<ComponentType>([
+  "relay", "switch", "fuse", "motor", "cable", "transformer", "busbar",
+]);
+
+// Shared curve palette: the canvas dot on a selected component and its curve
+// in the grading chart use the same colour, keyed by selection order.
+export const GRADING_COLORS = [
+  "#4ea1ff", "#38d39f", "#c792ea", "#ff8a65", "#ffd166", "#f87171", "#22d3ee", "#a3e635",
+];
 
 // Human-readable names for the IDMT curve families (UI dropdowns + chart
 // legend). Keyed by the IdmtCurve union so TS strict forces completeness.
@@ -11,6 +70,7 @@ export const CURVE_LABELS: Record<IdmtCurve, string> = {
   "IEC-VI": "Very Inverse",
   "IEC-EI": "Extremely Inverse",
   "IEC-LTI": "Long-Time Inverse",
+  "ABB-RI": "RI Inverse (ABB)",
   "DT": "Definite Time",
 };
 
@@ -57,6 +117,7 @@ export const DEFAULT_PARAMS: { [K in ComponentType]: ParamsByType[K] } = {
     reactance_ohm_per_km: 0.08,
     length_m: 50,
     ampacity_a: 400,
+    csa_mm2: 120,
   },
   load: {
     active_power_kw: 100,
@@ -69,6 +130,7 @@ export const DEFAULT_PARAMS: { [K in ComponentType]: ParamsByType[K] } = {
     locked_rotor_current_ratio: 6.0,
     starting_method: "DOL",
     starting_pf: STARTING_PF_DEFAULTS.DOL,
+    starting_time_s: 5,
   },
   switch: {
     closed: true,
@@ -81,15 +143,20 @@ export const DEFAULT_PARAMS: { [K in ComponentType]: ParamsByType[K] } = {
     intact: true,
   },
   relay: {
+    relay_model: "generic",
     curve: "IEC-SI",
     plug_setting: 1.0,
     time_multiplier: 0.1,
     definite_time_s: 0.5,
-  },
-  ct: {
-    primary_a: 200,
-    secondary_a: 5,
-    on_connection_id: null,
+    stage2_enabled: false,
+    stage2_pickup: 5.0,
+    stage2_curve: "DT",
+    stage2_tms: 0.1,
+    stage2_time_s: 0.3,
+    stage3_enabled: false,
+    stage3_pickup: 20.0,
+    stage3_time_s: 0.05,
+    measured_connection_id: null,
   },
 };
 
@@ -103,7 +170,6 @@ export const COMPONENT_LABELS: { [K in ComponentType]: string } = {
   switch: "Switch / CB",
   fuse: "Fuse",
   relay: "Relay (51)",
-  ct: "CT",
 };
 
 export const COMPONENT_PREFIXES: { [K in ComponentType]: string } = {
@@ -116,7 +182,6 @@ export const COMPONENT_PREFIXES: { [K in ComponentType]: string } = {
   switch: "Q",
   fuse: "F",
   relay: "RLY",
-  ct: "CT",
 };
 
 // How many terminals each component has (for connection validation).
@@ -129,10 +194,9 @@ export const TERMINAL_COUNT: { [K in ComponentType]: number } = {
   motor: 1,
   switch: 2,
   fuse: 2,
-  // Relays and CTs attach via control wires only — no required power terminals,
-  // so the connectivity check never blocks a run on an unwired relay/CT.
+  // Relays attach via a control wire only — no required power terminals, so the
+  // connectivity check never blocks a run on an unwired relay.
   relay: 0,
-  ct: 0,
 };
 
 // Which component types are "branch" elements (must connect bus-to-bus).
@@ -149,5 +213,4 @@ export const IS_BRANCH: { [K in ComponentType]: boolean } = {
   switch: true,
   fuse: true,
   relay: false,
-  ct: false,
 };

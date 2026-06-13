@@ -16,7 +16,6 @@ const ORDER: ComponentType[] = [
   "fuse",
   "load",
   "motor",
-  "ct",
   "relay",
 ];
 
@@ -49,7 +48,8 @@ export function Palette() {
       <h3 style={{ marginTop: 24 }}>Tip</h3>
       <p style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.5, padding: "0 4px" }}>
         Drag onto the canvas. Connect by dragging from one terminal dot to another. Busbars connect
-        to everything; transformers, cables and switches must connect bus-to-bus.
+        to everything; transformers, cables, switches and fuses can sit inline — a breaker right at a
+        transformer's terminals is fine, no busbar needed in between.
       </p>
     </aside>
   );

@@ -12,8 +12,7 @@ export type ComponentType =
   | "motor"
   | "switch"
   | "fuse"
-  | "relay"
-  | "ct";
+  | "relay";
 
 export interface XY {
   x: number;
@@ -48,6 +47,7 @@ export interface CableParams {
   reactance_ohm_per_km: number;
   length_m: number;
   ampacity_a: number;
+  csa_mm2: number; // conductor cross-section — used for the thermal damage curve on the grading chart
 }
 
 export interface LoadParams {
@@ -64,6 +64,7 @@ export interface MotorParams {
   locked_rotor_current_ratio: number;
   starting_method: MotorStartingMethod;
   starting_pf: number; // locked-rotor power factor (typically 0.15–0.30, very inductive)
+  starting_time_s: number; // run-up time — sets the width of the start curve on the grading chart
 }
 
 export interface SwitchParams {
@@ -82,27 +83,49 @@ export interface FuseParams {
 
 // IEC 60255-151 standard inverse-time overcurrent characteristics, plus a
 // definite-time option. Each maps to (K, α) constants in solver/idmt.ts.
+// "ABB-RI" is ABB's RI inverse (Relion family) for grading against legacy
+// ABB electromechanical relays — available only on ABB relay models.
 export type IdmtCurve =
   | "IEC-SI"   // Standard Inverse
   | "IEC-VI"   // Very Inverse
   | "IEC-EI"   // Extremely Inverse
   | "IEC-LTI"  // Long-Time Inverse
+  | "ABB-RI"   // RI Inverse (ABB Relion)
   | "DT";      // Definite Time
 
+// Relay hardware model: constrains the setting ranges and curve set in the
+// properties panel to what the real device accepts.
+export type RelayModel = "generic" | "ABB-REM615";
+
 export interface RelayParams {
+  relay_model: RelayModel;
+  // Stage 1 — low stage 3I> (PHLPTOC, "51")
   curve: IdmtCurve;
   plug_setting: number;     // pickup as a multiple of the CT secondary (Is/In), e.g. 1.0
-  time_multiplier: number;  // TMS — scales the whole IDMT curve (e.g. 0.05–1.5)
+  time_multiplier: number;  // TMS — scales the whole IDMT curve
   definite_time_s: number;  // operate time used when curve === "DT"
+  // Stage 2 — high stage 3I>> (PHHPTOC, "50/51"). Multi-stage models only;
+  // the relay trips on whichever enabled stage operates fastest.
+  stage2_enabled: boolean;
+  stage2_pickup: number;    // ×In, 0.10–40.00
+  stage2_curve: IdmtCurve;
+  stage2_tms: number;
+  stage2_time_s: number;    // DT operate time when stage2_curve === "DT"
+  // Stage 3 — instantaneous stage 3I>>> (PHIPTOC, "50"). Definite time only.
+  stage3_enabled: boolean;
+  stage3_pickup: number;    // ×In, 1.00–40.00
+  stage3_time_s: number;    // ≥ 0.02 s
+  // The connection (conductor) whose CT this relay measures. Picked from a
+  // dropdown of CT-equipped wires in the relay's properties panel. null when
+  // the relay has no CT assigned yet (surfaces a warning).
+  measured_connection_id: string | null;
 }
 
+// A current transformer is a property of a power connection (wire), not a
+// standalone component — it "clamps" onto the conductor the wire represents.
 export interface CtParams {
   primary_a: number;        // CT primary rating, e.g. 100 / 200 / 400
   secondary_a: 1 | 5;       // standard CT secondary
-  // The power connection (conductor) this CT is clamped onto. The CT renders
-  // inline at that wire's midpoint instead of as a free-floating node. null
-  // when the CT was dropped on empty canvas (unbound — surfaces a warning).
-  on_connection_id: string | null;
 }
 
 export type ParamsByType = {
@@ -115,7 +138,6 @@ export type ParamsByType = {
   switch: SwitchParams;
   fuse: FuseParams;
   relay: RelayParams;
-  ct: CtParams;
 };
 
 // ---------- Generic component shape ----------
@@ -134,6 +156,9 @@ export interface Connection {
   fromTerminal: string;
   toComponent: string;
   toTerminal: string;
+  // Optional current transformer clamped onto this conductor. Present iff the
+  // user has added a CT to the wire; relays reference it by this connection id.
+  ct?: CtParams | null;
 }
 
 // ---------- Project file ----------

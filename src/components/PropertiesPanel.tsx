@@ -5,9 +5,9 @@
 // =====================================================================
 
 import { useState, useEffect } from "react";
-import { useStore } from "../store";
-import { COMPONENT_LABELS, STARTING_PF_DEFAULTS, STANDARD_FUSE_SIZES_A, CURVE_LABELS } from "../defaults";
-import type { PowerComponent, ComponentType, MotorStartingMethod, CtParams } from "../types";
+import { useStore, isControlConnection } from "../store";
+import { COMPONENT_LABELS, STARTING_PF_DEFAULTS, STANDARD_FUSE_SIZES_A, CURVE_LABELS, DEFAULT_CT_PARAMS, RELAY_MODELS } from "../defaults";
+import type { PowerComponent, ComponentType, MotorStartingMethod, RelayParams, RelayModel, IdmtCurve } from "../types";
 import { Explain, Info } from "./Explain";
 
 function ConnectionPanel() {
@@ -15,12 +15,17 @@ function ConnectionPanel() {
   const connections = useStore((s) => s.connections);
   const components = useStore((s) => s.components);
   const removeConnection = useStore((s) => s.removeConnection);
+  const setConnectionCt = useStore((s) => s.setConnectionCt);
 
   const conn = connections.find((c) => c.id === selectedConnectionId);
   if (!conn) return null;
 
   const fromComp = components.find((c) => c.id === conn.fromComponent);
   const toComp = components.find((c) => c.id === conn.toComponent);
+
+  // CTs only make sense on a power conductor, not a relay's control wire.
+  const isControl = isControlConnection(conn, components);
+  const ct = conn.ct ?? null;
 
   return (
     <aside className="props">
@@ -50,6 +55,60 @@ function ConnectionPanel() {
           <input type="text" value={conn.toTerminal} readOnly style={{ opacity: 0.6 }} />
         </div>
       </div>
+
+      {!isControl && (
+        <div className="props-section">
+          <div className="field">
+            <h4 style={{ flex: 1 }}>Current transformer</h4>
+            <select
+              style={{ width: 90 }}
+              value={ct ? "yes" : "no"}
+              onChange={(e) =>
+                setConnectionCt(conn.id, e.target.value === "yes" ? { ...DEFAULT_CT_PARAMS } : null)
+              }
+            >
+              <option value="no">None</option>
+              <option value="yes">Fitted</option>
+            </select>
+          </div>
+          {ct && (
+            <>
+              <div className="field">
+                <label>Primary rating [A]</label>
+                <input
+                  style={{ width: 110 }}
+                  type="number"
+                  step={50}
+                  min={1}
+                  defaultValue={ct.primary_a}
+                  key={`${conn.id}-ct-primary`}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    if (isFinite(v) && v > 0) setConnectionCt(conn.id, { ...ct, primary_a: v });
+                  }}
+                />
+              </div>
+              <div className="field">
+                <label>Secondary rating [A]</label>
+                <select
+                  style={{ width: 110 }}
+                  value={String(ct.secondary_a)}
+                  onChange={(e) =>
+                    setConnectionCt(conn.id, { ...ct, secondary_a: parseFloat(e.target.value) as 1 | 5 })
+                  }
+                >
+                  <option value="1">1</option>
+                  <option value="5">5</option>
+                </select>
+              </div>
+              <p style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4, margin: "4px 2px 0" }}>
+                Select a relay and pick this wire as its measured CT to drive its pickup and fault marker.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="props-section">
         <button className="danger" onClick={() => removeConnection(conn.id)}>
           Delete connection
@@ -95,6 +154,7 @@ const FIELDS: { [K in ComponentType]: FieldDef[] } = {
     { key: "reactance_ohm_per_km", label: "X", unit: "Ω/km", type: "number", step: 0.01, min: 0 },
     { key: "length_m", label: "Length", unit: "m", type: "number", step: 1, min: 0.1 },
     { key: "ampacity_a", label: "Ampacity", unit: "A", type: "number", step: 10, min: 1 },
+    { key: "csa_mm2", label: "Cross-section", unit: "mm²", type: "number", step: 5, min: 1 },
   ],
   load: [
     { key: "active_power_kw", label: "Active P", unit: "kW", type: "number", step: 1, min: 0 },
@@ -112,6 +172,7 @@ const FIELDS: { [K in ComponentType]: FieldDef[] } = {
       options: ["DOL", "star-delta", "soft-starter", "VFD"],
     },
     { key: "starting_pf", label: "Starting PF", type: "number", step: 0.01, min: 0.05, max: 1.0 },
+    { key: "starting_time_s", label: "Start time", unit: "s", type: "number", step: 0.5, min: 0.1, max: 120 },
   ],
   switch: [
     { key: "closed", label: "State", type: "boolean" },
@@ -148,39 +209,72 @@ const FIELDS: { [K in ComponentType]: FieldDef[] } = {
   ],
   relay: [
     {
-      key: "curve",
-      label: "Curve",
+      key: "relay_model",
+      label: "Relay type",
       type: "select",
-      options: ["IEC-SI", "IEC-VI", "IEC-EI", "IEC-LTI", "DT"],
-      optionLabels: [
-        CURVE_LABELS["IEC-SI"],
-        CURVE_LABELS["IEC-VI"],
-        CURVE_LABELS["IEC-EI"],
-        CURVE_LABELS["IEC-LTI"],
-        CURVE_LABELS["DT"],
-      ],
+      options: Object.keys(RELAY_MODELS),
+      optionLabels: Object.values(RELAY_MODELS).map((m) => m.label),
     },
-    { key: "plug_setting", label: "Plug setting", unit: "×In", type: "number", step: 0.05, min: 0.1, max: 5 },
-    { key: "time_multiplier", label: "Time multiplier (TMS)", type: "number", step: 0.05, min: 0.025, max: 1.5 },
-    { key: "definite_time_s", label: "Definite time", unit: "s", type: "number", step: 0.05, min: 0.01 },
-  ],
-  ct: [
-    { key: "primary_a", label: "Primary rating", unit: "A", type: "number", step: 50, min: 1 },
-    {
-      key: "secondary_a",
-      label: "Secondary rating",
-      unit: "A",
-      type: "select",
-      options: ["1", "5"],
-    },
+    // curve / plug_setting / time_multiplier / definite_time_s ranges and the
+    // available curve sets are filled in per relay model — see applyRelayModel.
+    { key: "curve", label: "3I> curve", type: "select", options: [] },
+    { key: "plug_setting", label: "3I> pickup", unit: "×In", type: "number", step: 0.05 },
+    { key: "time_multiplier", label: "3I> TMS", type: "number", step: 0.05 },
+    { key: "definite_time_s", label: "3I> time", unit: "s", type: "number", step: 0.05 },
+    // High stage 3I>> (PHHPTOC) — multi-stage models only.
+    { key: "stage2_enabled", label: "High stage (3I>>)", type: "boolean" },
+    { key: "stage2_curve", label: "3I>> curve", type: "select", options: [] },
+    { key: "stage2_pickup", label: "3I>> pickup", unit: "×In", type: "number", step: 0.1, min: 0.1, max: 40 },
+    { key: "stage2_tms", label: "3I>> TMS", type: "number", step: 0.05, min: 0.05, max: 15 },
+    { key: "stage2_time_s", label: "3I>> time", unit: "s", type: "number", step: 0.05, min: 0.04, max: 200 },
+    // Instantaneous stage 3I>>> (PHIPTOC) — definite time only.
+    { key: "stage3_enabled", label: "Inst. stage (3I>>>)", type: "boolean" },
+    { key: "stage3_pickup", label: "3I>>> pickup", unit: "×In", type: "number", step: 0.5, min: 1, max: 40 },
+    { key: "stage3_time_s", label: "3I>>> time", unit: "s", type: "number", step: 0.01, min: 0.02, max: 200 },
   ],
 };
+
+// Constrain the relay fields to what the selected hardware model accepts.
+function applyRelayModel(fields: FieldDef[], model: RelayModel): FieldDef[] {
+  const spec = RELAY_MODELS[model] ?? RELAY_MODELS.generic;
+  return fields.map((f) => {
+    switch (f.key) {
+      case "curve":
+      case "stage2_curve":
+        return { ...f, options: spec.curves, optionLabels: spec.curves.map((c) => CURVE_LABELS[c]) };
+      case "plug_setting":
+        return { ...f, min: spec.plugMin, max: spec.plugMax, step: spec.plugStep };
+      case "time_multiplier":
+        return { ...f, min: spec.tmsMin, max: spec.tmsMax };
+      case "definite_time_s":
+        return { ...f, min: spec.dtMin, max: spec.dtMax };
+      default:
+        return f;
+    }
+  });
+}
+
+// Which relay fields are visible, given the model and the current params.
+// Stage 2/3 exist only on multi-stage models; per-stage timing fields follow
+// the stage's curve type (TMS for IDMT curves, time for DT).
+function relayFieldVisible(f: FieldDef, params: Record<string, unknown>): boolean {
+  const model = (params.relay_model as RelayModel) ?? "generic"; // legacy pre-v0.10 relays
+  const multiStage = (RELAY_MODELS[model] ?? RELAY_MODELS.generic).stages === 3;
+  if (f.key === "definite_time_s" && params.curve !== "DT") return false;
+  if (f.key === "time_multiplier" && params.curve === "DT") return false;
+  if (f.key.startsWith("stage") && !multiStage) return false;
+  if (["stage2_curve", "stage2_pickup", "stage2_tms", "stage2_time_s"].includes(f.key) && !params.stage2_enabled) return false;
+  if (f.key === "stage2_tms" && params.stage2_curve === "DT") return false;
+  if (f.key === "stage2_time_s" && params.stage2_curve !== "DT") return false;
+  if (["stage3_pickup", "stage3_time_s"].includes(f.key) && !params.stage3_enabled) return false;
+  return true;
+}
 
 function validateField(f: FieldDef, value: number): string | null {
   if (f.type !== "number") return null;
   if (isNaN(value) || !isFinite(value)) return "Must be a valid number";
   if (f.min !== undefined && value < f.min) {
-    return f.min === 0 ? "Must be ≥ 0" : `Must be > 0`;
+    return f.min === 0 ? "Must be ≥ 0" : `Must be ≥ ${f.min}`;
   }
   if (f.max !== undefined && value > f.max) return `Must be ≤ ${f.max}`;
   return null;
@@ -246,11 +340,13 @@ export function PropertiesPanel() {
   }
 
   const params = comp.parameters as unknown as Record<string, unknown>;
-  const fields = FIELDS[comp.type].filter((f) => {
-    // Definite-time field only applies to the DT curve; hide it otherwise.
-    if (comp.type === "relay" && f.key === "definite_time_s" && params.curve !== "DT") return false;
-    return true;
-  });
+  let fields = FIELDS[comp.type];
+  if (comp.type === "relay") {
+    fields = applyRelayModel(
+      fields.filter((f) => relayFieldVisible(f, params)),
+      (params.relay_model as RelayModel) ?? "generic", // legacy pre-v0.10 relays
+    );
+  }
 
   const handleNumberChange = (f: FieldDef, raw: string) => {
     const val = parseFloat(raw);
@@ -312,6 +408,11 @@ export function PropertiesPanel() {
                       <option value="true">Intact</option>
                       <option value="false">Blown</option>
                     </>
+                  ) : comp.type === "relay" ? (
+                    <>
+                      <option value="true">Enabled</option>
+                      <option value="false">Disabled</option>
+                    </>
                   ) : (
                     <>
                       <option value="true">Closed</option>
@@ -335,8 +436,22 @@ export function PropertiesPanel() {
                       } as any);
                     } else if (comp.type === "fuse" && f.key === "rated_current_a") {
                       updateComponentParams(comp.id, { rated_current_a: parseFloat(v) } as any);
-                    } else if (comp.type === "ct" && f.key === "secondary_a") {
-                      updateComponentParams(comp.id, { secondary_a: parseFloat(v) } as any);
+                    } else if (comp.type === "relay" && f.key === "relay_model") {
+                      // Switching hardware clamps the settings into the new
+                      // model's ranges, drops curves it doesn't offer, and
+                      // switches off stages the model doesn't have (otherwise
+                      // hidden-but-enabled stages would still shape the curve).
+                      const spec = RELAY_MODELS[v as RelayModel];
+                      const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
+                      updateComponentParams(comp.id, {
+                        relay_model: v as RelayModel,
+                        plug_setting: clamp(params.plug_setting as number, spec.plugMin, spec.plugMax),
+                        time_multiplier: clamp(params.time_multiplier as number, spec.tmsMin, spec.tmsMax),
+                        definite_time_s: clamp(params.definite_time_s as number, spec.dtMin, spec.dtMax),
+                        ...(spec.curves.includes(params.curve as IdmtCurve) ? {} : { curve: "IEC-SI" as IdmtCurve }),
+                        ...(spec.stages === 1 ? { stage2_enabled: false, stage3_enabled: false } : {}),
+                        ...(spec.curves.includes((params.stage2_curve as IdmtCurve) ?? "DT") ? {} : { stage2_curve: "DT" as IdmtCurve }),
+                      } as any);
                     } else {
                       updateComponentParams(comp.id, { [f.key]: v } as any);
                     }
@@ -369,11 +484,14 @@ export function PropertiesPanel() {
                   defaultValue={params[f.key] as number}
                   // Uncontrolled input — include in the key any other field whose
                   // change should *re-seed* this input's value. starting_pf gets
-                  // re-seeded when starting_method changes (auto-fill default PF).
+                  // re-seeded when starting_method changes (auto-fill default PF);
+                  // relay settings get re-seeded when the model clamps them.
                   key={
                     comp.type === "motor" && f.key === "starting_pf"
                       ? `${comp.id}-${f.key}-${params.starting_method}`
-                      : `${comp.id}-${f.key}`
+                      : comp.type === "relay"
+                        ? `${comp.id}-${f.key}-${params.relay_model}`
+                        : `${comp.id}-${f.key}`
                   }
                   onChange={(e) => handleNumberChange(f, e.target.value)}
                 />
@@ -389,7 +507,6 @@ export function PropertiesPanel() {
       </div>
 
       {comp.type === "relay" && <RelayLinksSection relayId={comp.id} />}
-      {comp.type === "ct" && <CtConductorSection ctId={comp.id} />}
 
       <div className="props-section">
         <button className="danger" onClick={() => removeComponent(comp.id)}>
@@ -400,77 +517,54 @@ export function PropertiesPanel() {
   );
 }
 
-// Read-only summary of which conductor a CT is clamped onto. Resolved live
-// from the CT's on_connection_id (set when dropped on a wire).
-function CtConductorSection({ ctId }: { ctId: string }) {
+// Relay protection links: a dropdown to pick which CT-equipped wire the relay
+// measures, plus a read-only view of the breaker it trips (via control wire).
+function RelayLinksSection({ relayId }: { relayId: string }) {
   const components = useStore((s) => s.components);
   const connections = useStore((s) => s.connections);
-
-  const ct = components.find((c) => c.id === ctId);
-  const onId = ct ? (ct.parameters as CtParams).on_connection_id : null;
-  const conn = onId ? connections.find((c) => c.id === onId) : undefined;
-  const labelOf = (id: string) => components.find((c) => c.id === id)?.label ?? id;
-  const bound = !!conn;
-  const value = conn
-    ? `${labelOf(conn.fromComponent)} → ${labelOf(conn.toComponent)}`
-    : "— not on a conductor —";
-
-  return (
-    <div className="props-section">
-      <h4>Measured conductor</h4>
-      <div className="field">
-        <label>Conductor</label>
-        <input
-          type="text"
-          value={value}
-          readOnly
-          style={{ opacity: 0.7, color: bound ? undefined : "var(--warn)" }}
-        />
-      </div>
-      <p style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4, margin: "4px 2px 0" }}>
-        {bound
-          ? "Drag a new CT onto a different wire to re-clamp; delete the wire to release this one."
-          : "Drag this CT onto a power conductor so it sits inline on the wire it measures."}
-      </p>
-    </div>
-  );
-}
-
-// Read-only summary of what a relay is wired to via control wires: which CT
-// feeds it current, and which breaker it trips. Resolved live from connections.
-function RelayLinksSection({ relayId }: { relayId: string }) {
   const getRelayLinks = useStore((s) => s.getRelayLinks);
-  // Re-derive when components/connections change.
-  useStore((s) => s.connections);
+  const updateComponentParams = useStore((s) => s.updateComponentParams);
   const links = getRelayLinks(relayId);
 
-  const Row = ({ label, value, ok }: { label: string; value: string; ok: boolean }) => (
-    <div className="field">
-      <label>{label}</label>
-      <input
-        type="text"
-        value={value}
-        readOnly
-        style={{ opacity: 0.7, color: ok ? undefined : "var(--warn)" }}
-      />
-    </div>
-  );
+  const relay = components.find((c) => c.id === relayId);
+  const measuredId = relay ? (relay.parameters as RelayParams).measured_connection_id : null;
+
+  const labelOf = (id: string) => components.find((c) => c.id === id)?.label ?? id;
+  const ctWires = connections.filter((c) => c.ct);
 
   return (
     <div className="props-section">
       <h4>Protection links</h4>
-      <Row
-        label="CT"
-        value={links.ctLabel ? `${links.ctLabel} (${links.ct?.primary_a}/${links.ct?.secondary_a} A)` : "— none wired —"}
-        ok={!!links.ctId}
-      />
-      <Row
-        label="Trips breaker"
-        value={links.breakerLabel ?? "— none wired —"}
-        ok={!!links.breakerId}
-      />
+      <div className="field">
+        <label>Measured CT</label>
+        <select
+          style={{ width: 150 }}
+          value={measuredId ?? ""}
+          onChange={(e) =>
+            updateComponentParams(relayId, { measured_connection_id: e.target.value || null } as any)
+          }
+        >
+          <option value="">— none —</option>
+          {ctWires.map((c) => (
+            <option key={c.id} value={c.id}>
+              {labelOf(c.fromComponent)} → {labelOf(c.toComponent)} ({c.ct!.primary_a}/{c.ct!.secondary_a} A)
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="field">
+        <label>Trips breaker</label>
+        <input
+          type="text"
+          value={links.breakerLabel ?? "— none wired —"}
+          readOnly
+          style={{ opacity: 0.7, color: links.breakerId ? undefined : "var(--warn)" }}
+        />
+      </div>
       <p style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4, margin: "4px 2px 0" }}>
-        Draw a dashed control wire CT → relay → breaker to complete the chain.
+        {ctWires.length === 0
+          ? "Add a CT to a power wire first (select the wire), then pick it here. Draw a dashed control wire to the breaker."
+          : "Pick the CT this relay reads, then draw a dashed control wire to the breaker it trips."}
       </p>
     </div>
   );

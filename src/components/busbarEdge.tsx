@@ -7,13 +7,15 @@
 
 import { BaseEdge, EdgeLabelRenderer, EdgeProps, useInternalNode } from "@xyflow/react";
 import { useStore } from "../store";
-import type { BusbarParams } from "../types";
+import type { BusbarParams, CtParams, RelayParams } from "../types";
+import { CtGlyph } from "./symbols";
 
 const DEFAULT_NON_BUS_WIDTH = 80;
 
 interface EdgeData {
   label?: string;
   tone?: "ok" | "warn" | "bad" | "live";
+  ct?: CtParams;
 }
 
 export function BusbarEdge(props: EdgeProps) {
@@ -22,6 +24,7 @@ export function BusbarEdge(props: EdgeProps) {
   const ed = data as EdgeData | undefined;
 
   const components = useStore((s) => s.components);
+  const selectConnection = useStore((s) => s.selectConnection);
   const srcNode = useInternalNode(source);
   const tgtNode = useInternalNode(target);
 
@@ -65,10 +68,33 @@ export function BusbarEdge(props: EdgeProps) {
 
   const midX = (sx + tx) / 2;
   const midY = (sourceY + targetY) / 2;
+  const badgeY = midY - (ed?.label ? 15 : 0);
   const toneClass = ed?.tone ? `tone-${ed.tone}` : "";
+
+  // Relays that measure this wire's CT get a faint dotted line from the relay
+  // to the CT badge, so the link picked in the relay's dropdown is visible.
+  const measuringRelays = ed?.ct
+    ? components.filter(
+        (c) => c.type === "relay" && (c.parameters as RelayParams).measured_connection_id === id,
+      )
+    : [];
 
   return (
     <>
+      {measuringRelays.map((r) => (
+        <line
+          key={`ctlink-${r.id}`}
+          x1={midX}
+          y1={badgeY}
+          x2={r.position.x + 40}
+          y2={r.position.y + 40}
+          stroke="var(--accent)"
+          strokeWidth={1}
+          strokeDasharray="2 3"
+          opacity={0.4}
+          style={{ pointerEvents: "none" }}
+        />
+      ))}
       <BaseEdge
         id={id}
         path={path}
@@ -77,6 +103,26 @@ export function BusbarEdge(props: EdgeProps) {
         markerStart={markerStart}
         className={selected ? "selected" : undefined}
       />
+      {ed?.ct && (
+        <EdgeLabelRenderer>
+          <div
+            className={`edge-ct-badge ${selected ? "selected" : ""}`}
+            style={{
+              position: "absolute",
+              transform: `translate(-50%, -50%) translate(${midX}px, ${badgeY}px)`,
+              pointerEvents: "all",
+            }}
+            title={`CT ${ed.ct.primary_a}/${ed.ct.secondary_a} A — click to edit`}
+            onClick={(e) => {
+              e.stopPropagation();
+              selectConnection(id);
+            }}
+          >
+            <CtGlyph size={16} />
+            <span>{ed.ct.primary_a}/{ed.ct.secondary_a}</span>
+          </div>
+        </EdgeLabelRenderer>
+      )}
       {ed?.label && (
         <EdgeLabelRenderer>
           <div

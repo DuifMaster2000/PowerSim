@@ -145,9 +145,9 @@ export function buildNetwork(
     const a = compById.get(conn.fromComponent);
     const b = compById.get(conn.toComponent);
     if (!a || !b) continue;
-    // Relay/CT control wires carry no power — exclude them from the electrical
+    // Relay control wires carry no power — exclude them from the electrical
     // topology entirely so they never merge or create buses.
-    if (a.type === "relay" || a.type === "ct" || b.type === "relay" || b.type === "ct") continue;
+    if (a.type === "relay" || b.type === "relay") continue;
     if (a.type === "switch" && !(a.parameters as SwitchParams).closed) continue;
     if (b.type === "switch" && !(b.parameters as SwitchParams).closed) continue;
     if (a.type === "fuse" && !(a.parameters as FuseParams).intact) continue;

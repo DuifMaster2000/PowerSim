@@ -116,18 +116,19 @@ export function ComponentSymbol({
           <path d="M20 29 L20 38" stroke={STROKE} strokeWidth={SW} strokeDasharray="2 2" />
         </svg>
       );
-    case "ct":
-      // Current transformer: a toroid straddling the (vertical) power conductor
-      // it clamps onto, so it slots seamlessly inline on a drop-line. The dashed
-      // secondary control stub exits to the right toward the relay.
-      return (
-        <svg width={size} height={size} viewBox="0 0 40 40" fill="none">
-          <path d="M20 1 L20 39" stroke={STROKE} strokeWidth={SW} />
-          <circle cx="20" cy="20" r="8" stroke={STROKE} strokeWidth={SW} />
-          <path d="M28 20 L39 20" stroke={STROKE} strokeWidth={SW} strokeDasharray="2 2" />
-        </svg>
-      );
     default:
       return null;
   }
+}
+
+// Current-transformer toroid drawn at the midpoint of a wire that carries a CT.
+// Standalone (not keyed by ComponentType) because a CT is a property of a wire,
+// not a placeable component.
+export function CtGlyph({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="8" stroke={STROKE} strokeWidth={1.6} />
+      <circle cx="12" cy="12" r="3.4" stroke={STROKE} strokeWidth={1.6} />
+    </svg>
+  );
 }

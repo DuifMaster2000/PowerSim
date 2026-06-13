@@ -14,14 +14,15 @@ import type {
   MotorStartingResult,
   ValidationIssue,
 } from "./types";
-import type { CtParams } from "./types";
+import type { CtParams, RelayParams, MotorParams } from "./types";
 import { DEFAULT_PARAMS, COMPONENT_PREFIXES } from "./defaults";
 import { validateProject } from "./validation";
-import { buildNetwork } from "./solver/network";
+import { buildNetwork, effectiveStartingCurrentRatio } from "./solver/network";
 
 // A connection is a control wire (not part of the power circuit) iff either
-// endpoint is a relay or a CT. Used by the canvas (dashed styling), the network
-// builder, and validation to keep protection signalling out of the power model.
+// endpoint is a relay. Used by the canvas (dashed styling), the network builder,
+// and validation to keep protection signalling out of the power model. CTs are
+// now a property of a power wire, not a component, so they never form a wire.
 export function isControlConnection(
   conn: Connection,
   components: PowerComponent[],
@@ -29,15 +30,23 @@ export function isControlConnection(
   const byId = (id: string) => components.find((c) => c.id === id);
   const a = byId(conn.fromComponent);
   const b = byId(conn.toComponent);
-  return (
-    a?.type === "relay" || a?.type === "ct" || b?.type === "relay" || b?.type === "ct"
-  );
+  return a?.type === "relay" || b?.type === "relay";
 }
 
-// Resolved protection links for a relay: the CT feeding it and the breaker it
-// trips, found by following control wires. Either may be null if unwired.
+// A short label for the conductor a CT sits on, e.g. "BB-01 → Q-01".
+export function connectionLabel(
+  conn: Connection,
+  components: PowerComponent[],
+): string {
+  const labelOf = (id: string) => components.find((c) => c.id === id)?.label ?? id;
+  return `${labelOf(conn.fromComponent)} → ${labelOf(conn.toComponent)}`;
+}
+
+// Resolved protection links for a relay: the CT it measures (a property of a
+// wire, referenced by RelayParams.measured_connection_id) and the breaker it
+// trips (found by following its control wire). Either may be null if unset.
 export interface RelayLinks {
-  ctId: string | null;
+  ctConnectionId: string | null;
   ctLabel: string | null;
   ct: CtParams | null;
   breakerId: string | null;
@@ -50,7 +59,15 @@ export function resolveRelayLinks(
   connections: Connection[],
 ): RelayLinks {
   const byId = (id: string) => components.find((c) => c.id === id);
-  let ctId: string | null = null;
+  const relay = byId(relayId);
+  const relayParams = relay?.type === "relay" ? (relay.parameters as RelayParams) : null;
+
+  // CT: the wire the relay is assigned to measure, if that wire still carries a CT.
+  const ctConnId = relayParams?.measured_connection_id ?? null;
+  const ctConn = ctConnId ? connections.find((c) => c.id === ctConnId) : undefined;
+  const ct = ctConn?.ct ?? null;
+
+  // Breaker: the first switch reached over a control wire from the relay.
   let breakerId: string | null = null;
   for (const conn of connections) {
     let otherId: string | null = null;
@@ -58,18 +75,66 @@ export function resolveRelayLinks(
     else if (conn.toComponent === relayId) otherId = conn.fromComponent;
     if (!otherId) continue;
     const other = byId(otherId);
-    if (!other) continue;
-    if (other.type === "ct" && !ctId) ctId = other.id;
-    if (other.type === "switch" && !breakerId) breakerId = other.id;
+    if (other?.type === "switch" && !breakerId) breakerId = other.id;
   }
-  const ctComp = ctId ? byId(ctId) : null;
   const breakerComp = breakerId ? byId(breakerId) : null;
+
   return {
-    ctId,
-    ctLabel: ctComp?.label ?? null,
-    ct: ctComp ? (ctComp.parameters as CtParams) : null,
+    ctConnectionId: ct ? ctConnId : null,
+    ctLabel: ct && ctConn ? connectionLabel(ctConn, components) : null,
+    ct,
     breakerId,
     breakerLabel: breakerComp?.label ?? null,
+  };
+}
+
+// Migrate legacy projects (CT as a draggable component with `on_connection_id`)
+// to the wire-CT model: copy each CT's rating onto the conductor it clamped,
+// repoint any relay that was control-wired to it, then drop the CT components
+// and their control wires. Returns cleaned components + connections.
+function migrateLegacyCts(
+  components: PowerComponent[],
+  connections: Connection[],
+): { components: PowerComponent[]; connections: Connection[] } {
+  const cts = components.filter((c) => (c.type as string) === "ct");
+  if (cts.length === 0) return { components, connections };
+
+  const ctIds = new Set(cts.map((c) => c.id));
+  let conns = connections.map((c) => ({ ...c }));
+  const comps = components.map((c) => ({ ...c }));
+
+  // relay id → connection id the relay should now measure
+  const relayMeasures = new Map<string, string>();
+
+  for (const ct of cts) {
+    const params = ct.parameters as unknown as { primary_a?: number; secondary_a?: 1 | 5; on_connection_id?: string | null };
+    const onId = params.on_connection_id ?? null;
+    if (onId) {
+      const target = conns.find((c) => c.id === onId);
+      if (target) {
+        target.ct = { primary_a: params.primary_a ?? 200, secondary_a: params.secondary_a ?? 5 };
+        // Any relay wired to this CT now measures the clamped conductor.
+        for (const conn of conns) {
+          const other =
+            conn.fromComponent === ct.id ? conn.toComponent :
+            conn.toComponent === ct.id ? conn.fromComponent : null;
+          if (other && comps.find((c) => c.id === other)?.type === "relay") {
+            relayMeasures.set(other, onId);
+          }
+        }
+      }
+    }
+  }
+
+  for (const c of comps) {
+    if (c.type === "relay" && relayMeasures.has(c.id)) {
+      c.parameters = { ...(c.parameters as RelayParams), measured_connection_id: relayMeasures.get(c.id)! };
+    }
+  }
+
+  return {
+    components: comps.filter((c) => !ctIds.has(c.id)),
+    connections: conns.filter((c) => !ctIds.has(c.fromComponent) && !ctIds.has(c.toComponent)),
   };
 }
 import { runLoadFlow } from "./solver/loadFlow";
@@ -170,6 +235,16 @@ interface State {
   // grading chart. View-only; not part of the project file.
   resultsTab: "results" | "grading";
 
+  // Components included in the grading study (clicked on the canvas while the
+  // Grading tab is open). Order matters: it assigns each one its curve colour.
+  // View-only; not part of the project file or undo history.
+  gradingSelection: string[];
+
+  // Grading chart reference voltage (kV). null = plot each device at its own
+  // voltage level (no referral). When set, every curve/marker is referred to
+  // this voltage through the transformer ratios. View-only.
+  gradingRefKv: number | null;
+
   // Undo / redo history
   past: Snapshot[];
   future: Snapshot[];
@@ -191,6 +266,7 @@ interface State {
     toTerminal: string,
   ) => void;
   removeConnection: (id: string) => void;
+  setConnectionCt: (id: string, ct: CtParams | null) => void;
 
   selectComponent: (id: string | null) => void;
   selectConnection: (id: string | null) => void;
@@ -206,6 +282,9 @@ interface State {
   setGlossaryOpen: (v: boolean) => void;
   setAnimationIter: (i: number) => void;
   setResultsTab: (v: "results" | "grading") => void;
+  toggleGradingComponent: (id: string) => void;
+  clearGradingSelection: () => void;
+  setGradingRefKv: (kv: number | null) => void;
   markSaved: () => void;
 
   newProject: () => void;
@@ -234,6 +313,22 @@ interface State {
   // short-circuit run, mapped via the relay's breaker → adjacent branch flow.
   // Empty when no short-circuit result exists.
   getRelayFaultCurrents: () => Map<string, { primaryA: number; label: string }>;
+
+  // Grading: per-motor full-load / starting current in amps at the motor's bus
+  // voltage, for the motor start curve on the TCC chart. Needs the network
+  // (bus kV), so it lives behind the store to preserve the layering rule.
+  getMotorGradingData: () => Map<string, { flcA: number; startA: number; startTimeS: number }>;
+
+  // Grading: fault level (Ik" in primary amps) at each busbar in the grading
+  // selection, for the vertical fault-level lines on the TCC chart. Computed
+  // fresh per selected bus using the current c-factor — independent of any
+  // short-circuit run the user may have triggered.
+  getBusFaultLevels: () => Map<string, { faultA: number; label: string }>;
+
+  // Grading: voltage level (kV) of every component, for referring TCC curves
+  // to a common voltage. Buses/terminals get their bus base-kV; transformers
+  // and cables get their from-bus (primary) base-kV.
+  getComponentKv: () => Map<string, number>;
 }
 
 const takeSnapshot = (s: State): Snapshot => ({
@@ -269,6 +364,8 @@ const newProjectState = () => ({
   viewport: null as { x: number; y: number; zoom: number } | null,
   projectLoadKey: 0,
   isDirty: false,
+  gradingSelection: [] as string[],
+  gradingRefKv: null as number | null,
   past: [] as Snapshot[],
   future: [] as Snapshot[],
 });
@@ -334,6 +431,7 @@ export const useStore = create<State>((set, get) => ({
       components: s.components.filter((c) => c.id !== id),
       connections: s.connections.filter((c) => c.fromComponent !== id && c.toComponent !== id),
       selectedComponentId: s.selectedComponentId === id ? null : s.selectedComponentId,
+      gradingSelection: s.gradingSelection.filter((x) => x !== id),
       loadFlow: null,
       shortCircuit: null,
       motorStarting: null,
@@ -417,17 +515,33 @@ export const useStore = create<State>((set, get) => ({
     set((s) => ({
       ...withHistory(s),
       connections: s.connections.filter((c) => c.id !== id),
-      // Unbind any CT that was clamped to the conductor being removed, so it
-      // falls back to a free, draggable node instead of a dangling reference.
+      // Detach any relay that was measuring the CT on the conductor being
+      // removed, so it doesn't keep a dangling measured_connection_id.
       components: s.components.map((c) =>
-        c.type === "ct" && (c.parameters as CtParams).on_connection_id === id
-          ? { ...c, parameters: { ...c.parameters, on_connection_id: null } }
+        c.type === "relay" && (c.parameters as RelayParams).measured_connection_id === id
+          ? { ...c, parameters: { ...c.parameters, measured_connection_id: null } }
           : c,
       ),
       selectedConnectionId: s.selectedConnectionId === id ? null : s.selectedConnectionId,
       loadFlow: null,
       shortCircuit: null,
       motorStarting: null,
+      isDirty: true,
+    }));
+  },
+
+  setConnectionCt: (id, ct) => {
+    set((s) => ({
+      ...withHistory(s),
+      connections: s.connections.map((c) => (c.id === id ? { ...c, ct } : c)),
+      // Removing a CT detaches any relay that was measuring it.
+      components: ct
+        ? s.components
+        : s.components.map((c) =>
+            c.type === "relay" && (c.parameters as RelayParams).measured_connection_id === id
+              ? { ...c, parameters: { ...c.parameters, measured_connection_id: null } }
+              : c,
+          ),
       isDirty: true,
     }));
   },
@@ -455,6 +569,14 @@ export const useStore = create<State>((set, get) => ({
   setGlossaryOpen: (v) => set({ glossaryOpen: v }),
   setAnimationIter: (i) => set({ animationIter: i }),
   setResultsTab: (v) => set({ resultsTab: v }),
+  toggleGradingComponent: (id) =>
+    set((s) => ({
+      gradingSelection: s.gradingSelection.includes(id)
+        ? s.gradingSelection.filter((x) => x !== id)
+        : [...s.gradingSelection, id],
+    })),
+  clearGradingSelection: () => set({ gradingSelection: [] }),
+  setGradingRefKv: (kv) => set({ gradingRefKv: kv }),
   markSaved: () => set({ isDirty: false }),
 
   newProject: () => set((s) => ({ ...newProjectState(), projectLoadKey: s.projectLoadKey + 1 })),
@@ -473,12 +595,13 @@ export const useStore = create<State>((set, get) => ({
       }),
     );
     idCounter = maxNum + 1;
+    const migrated = migrateLegacyCts(file.components, file.connections);
     set((s) => ({
       projectName: file.metadata.name,
       baseMva: file.system.base_mva,
       frequencyHz: file.system.frequency_hz,
-      components: file.components,
-      connections: file.connections,
+      components: migrated.components,
+      connections: migrated.connections,
       selectedComponentId: null,
       selectedConnectionId: null,
       runMode: "idle",
@@ -488,6 +611,8 @@ export const useStore = create<State>((set, get) => ({
       validation: [],
       faultBusId: null,
       startingMotorId: null,
+      gradingSelection: [],
+      gradingRefKv: null,
       past: [],
       future: [],
       // Restore saved viewport if present; otherwise signal a fit-to-view.
@@ -745,5 +870,82 @@ export const useStore = create<State>((set, get) => ({
       result.set(relay.id, { primaryA, label: relay.label });
     }
     return result;
+  },
+
+  getMotorGradingData: () => {
+    const out = new Map<string, { flcA: number; startA: number; startTimeS: number }>();
+    let net;
+    try {
+      net = buildNetwork(get().exportProject());
+    } catch {
+      return out;
+    }
+    for (const m of net.motors) {
+      const bus = net.buses[m.busIndex];
+      const kv = bus.nominalKv || bus.baseKv;
+      if (!kv) continue;
+      const comp = get().components.find((c) => c.id === m.componentId);
+      if (!comp) continue;
+      const p = comp.parameters as MotorParams;
+      const sKva = Math.hypot(m.electricalKw, m.electricalKvar);
+      const flcA = sKva / (Math.sqrt(3) * kv);
+      const ratio = effectiveStartingCurrentRatio(
+        p.starting_method ?? "DOL",
+        p.locked_rotor_current_ratio,
+      );
+      out.set(m.componentId, {
+        flcA,
+        startA: flcA * ratio,
+        startTimeS: p.starting_time_s ?? 5, // legacy pre-v0.9 motors
+      });
+    }
+    return out;
+  },
+
+  getBusFaultLevels: () => {
+    const out = new Map<string, { faultA: number; label: string }>();
+    const selected = new Set(get().gradingSelection);
+    const busbars = get().components.filter((c) => c.type === "busbar" && selected.has(c.id));
+    if (busbars.length === 0) return out;
+    let net;
+    try {
+      net = buildNetwork(get().exportProject());
+    } catch {
+      return out;
+    }
+    const cFactor = get().shortCircuitCFactor;
+    for (const bb of busbars) {
+      const idx = net.busIndexById.get(bb.id);
+      if (idx === undefined) continue; // orphaned / not energised
+      try {
+        const res = runShortCircuit(net, idx, cFactor);
+        out.set(bb.id, { faultA: res.ikSymKa * 1000, label: bb.label });
+      } catch {
+        // skip a bus that can't be solved (e.g. islanded section)
+      }
+    }
+    return out;
+  },
+
+  getComponentKv: () => {
+    const map = new Map<string, number>();
+    let net;
+    try {
+      net = buildNetwork(get().exportProject());
+    } catch {
+      return map;
+    }
+    for (const b of net.buses) {
+      const kv = b.baseKv || b.nominalKv;
+      if (!kv) continue;
+      for (const cid of b.memberComponentIds ?? []) map.set(cid, kv);
+    }
+    // Branches (transformer/cable) straddle two buses — pin them to their
+    // from-bus (the transformer's primary) base-kV.
+    for (const br of net.branches) {
+      const kv = net.buses[br.fromBus].baseKv || net.buses[br.fromBus].nominalKv;
+      if (kv) map.set(br.id, kv);
+    }
+    return map;
   },
 }));

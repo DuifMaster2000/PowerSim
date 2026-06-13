@@ -192,6 +192,75 @@ Adds a basic protection layer on top of the existing power model. The power solv
 - **PropertiesPanel**: relay fields (curve select with friendly `CURVE_LABELS`, plug setting, TMS, definite-time shown only for DT); CT fields (primary A, 1/5 A secondary). Relay has a read-only **Protection links** section (resolved CT + breaker); CT has a read-only **Measured conductor** section showing the clamped conductor (warn-coloured when unbound).
 - **ResultsPanel**: now has a **Results / Grading** tab bar (`resultsTab`). The existing body became `ResultsContent`; the new `GradingCurves.tsx` renders a hand-built **log–log TCC chart** (one coloured curve per relay, dashed band per fuse, decade gridlines), **fault-current markers** + operate-time dots from `getRelayFaultCurrents()`, and a **grading-margin table** (Δt < 0.3 s = bad, < 0.4 s = warn). CSV export of curve data + margins.
 
+### v0.8 — CT becomes a wire property (not a draggable component)
+
+The v0.7 CT was a placeable node that "clamped" onto a conductor via `CtParams.on_connection_id`, which left the toroid sitting awkwardly on the wire. v0.8 makes a **current transformer a property of the power connection itself**.
+
+**Model:**
+- `Connection.ct?: CtParams | null` — a wire carries a CT iff this is set. `CtParams` is now just `{ primary_a, secondary_a }` (the `on_connection_id` back-reference is gone). The `ct` value of `ComponentType` is **removed** entirely — CTs are no longer components.
+- Relays reference their CT by connection id: `RelayParams.measured_connection_id`. Picked from a **dropdown** of CT-equipped wires in the relay's properties panel. The relay still trips its breaker over a dashed **control wire** (unchanged), so `resolveRelayLinks` now resolves the CT from `measured_connection_id` and the breaker from the control wire. `RelayLinks.ctId` → `ctConnectionId`.
+- The relay node dropped its `ct_in` terminal — it has only a `trip` source now.
+
+**Store:** new `setConnectionCt(connId, ct | null)` action (clears any relay's `measured_connection_id` when a CT is removed). `removeConnection` likewise detaches relays pointing at the deleted wire. `isControlConnection` is now relay-only.
+
+**UI:**
+- **Palette**: CT item removed.
+- **PropertiesPanel**: selecting a *power* wire shows a "Current transformer" section (None / Fitted + primary/secondary). The relay's "Protection links" section gained the **Measured CT** dropdown.
+- **Canvas / busbarEdge**: a wire with a CT renders a clickable **toroid badge** (`CtGlyph` + rating) at its midpoint via the custom edge; clicking it selects the wire. The custom edge is now used whenever a wire involves a busbar **or** carries a CT.
+
+**Back-compat:** `migrateLegacyCts` in `store.ts` runs on `loadProject` — it copies each legacy CT component's rating onto the conductor it clamped, repoints any relay that was control-wired to it via `measured_connection_id`, then drops the CT components and their control wires. Old `.psim.json` files load unchanged.
+
+### v0.9 — Sectional grading studies (selectable TCC curves)
+
+The grading tab previously plotted every relay + fuse, always. v0.9 makes the study **selection-driven** so a specific section can be graded.
+
+**Selection model:**
+- `gradingSelection: string[]` in the store (view-only: not in the project file or undo history; cleared on new/load; pruned in `removeComponent`). Actions: `toggleGradingComponent(id)`, `clearGradingSelection()`.
+- **With the Grading tab open, clicking a grading-capable component on the canvas toggles it in/out of the study** (`GRADABLE_TYPES` in `defaults.ts`: relay, switch, fuse, motor, cable, transformer). Clicking a breaker's symbol in grading mode does NOT operate it (`onSymbolClick` checks `resultsTab`).
+- Selected components show a **colored dot** (`.node-grading-dot`) whose colour matches their curve in the chart — `GRADING_COLORS` in `defaults.ts` is shared by Canvas and GradingCurves, keyed by selection order. The Grading tab shows removable **chips** per selection + Clear all.
+- Empty selection = previous behaviour (all relays + fuses).
+
+**New curves (all in `src/idmt.ts`, pure):**
+- **Motor start curve** — `motorStartCurvePoints(flcA, startA, startTimeS)`: locked-rotor current until the run-up time, then FLC. New `MotorParams.starting_time_s` (default 5 s, legacy `?? 5`). FLC needs the motor's bus kV → store getter `getMotorGradingData()` (uses `buildNetwork` + `effectiveStartingCurrentRatio`, preserving the UI/solver layering rule).
+- **Cable thermal damage** — `cableDamageCurvePoints(csaMm2, …)`: adiabatic I²t with k = 143 (Cu/XLPE, `CABLE_K_CU_XLPE`). New `CableParams.csa_mm2` (default 120 mm², legacy `?? 120`).
+- **Transformer damage + inrush** — `transformerDamageCurvePoints(inA)`: IEC 60076-5 / ANSI C57.109 category I (t = 1250/m², 3.5–25×In, In at primary kV) plus `transformerInrushPoint(inA)` (12×In @ 0.1 s) drawn as a ring marker.
+- A selected **breaker resolves to the relay(s) that trip it** (via `getRelayLinks().breakerId`); breakers with no relay produce a warning note under the chart, as do unwired motors.
+- A selected **busbar** draws a vertical **fault-level line** (Ik″) in the bus's colour, plus a fault-level table. Computed per selected bus via `getBusFaultLevels()` (`buildNetwork` + `runShortCircuit` at the current c-factor), independent of any short-circuit run. Only real busbars are gradable (synthetic buses aren't components).
+- Curve kinds are dash-coded (relay solid, fuse/motor/cable/transformer distinct dashes). Fault markers + grading-margin table cover only the *displayed* relays.
+- Axis caveat: curves are plotted at **each device's own voltage level** (axis label says so); currents are not referred across transformers.
+
+### v0.10 — Relay hardware models (ABB REM615)
+
+Relays now carry a **hardware model** that constrains their settings to what the real device accepts.
+
+- `RelayParams.relay_model: "generic" | "ABB-REM615"` (default `"generic"`, legacy `?? "generic"`). Spec table `RELAY_MODELS` in `defaults.ts`: per-model plug-setting / TMS / definite-time ranges + available curve set.
+  - **generic**: classic electromechanical-era ranges — plug 0.1–5 ×In, TMS 0.025–1.5, DT 0.01–100 s, IEC curves only.
+  - **ABB-REM615** (Relion 615 series, PHLPTOC low stage): plug 0.05–5.00 ×In, **TMS 0.05–15.0**, DT 0.04–200 s, IEC curves + **ABB RI inverse**.
+- New `IdmtCurve` value `"ABB-RI"`: t = k / (0.339 − 0.236/m) in `idmt.ts` — flattens toward ~2.95·k at high multiples (grades against old ABB disc relays). Excluded from `IEC_CONSTANTS` typing.
+- **PropertiesPanel**: "Relay type" select; `applyRelayModel` rewrites the curve options and numeric min/max per model. Switching model **clamps** out-of-range settings and resets unavailable curves to IEC-SI; relay numeric inputs re-seed via React key on model change. Validation message now states the actual minimum (`Must be ≥ x`).
+
+**Multi-stage overcurrent (REM615):**
+- `RelayModelSpec.stages: 1 | 3`. The REM615 models all three Relion phase stages as flat `RelayParams` fields: stage 1 = existing `curve`/`plug_setting`/`time_multiplier`/`definite_time_s` (3I>, PHLPTOC); `stage2_*` = 3I>> high stage (PHHPTOC, 0.10–40 ×In, IDMT or DT); `stage3_*` = 3I>>> instantaneous (PHIPTOC, 1–40 ×In, DT only, ≥0.02 s). All have legacy `??` fallbacks (disabled by default).
+- `idmtOperateTime` returns **min over enabled stages** (a real relay trips on the fastest stage); `idmtCurvePoints` samples extra point pairs straddling each enabled pickup so the composite renders crisp vertical steps. `relayHighestPickupA` extends the chart's current axis to cover the instantaneous step.
+- PropertiesPanel: stage fields show only on multi-stage models (`relayFieldVisible`); per-stage timing fields follow the stage's curve type (TMS for IDMT, time for DT — applied to stage 1 too). Stage enables render Enabled/Disabled. Switching to a 1-stage model **force-disables stages 2/3** so hidden stages can't shape the curve.
+- Grading legend tags multi-stage relays (e.g. `RLY-01 · 3-stage Standard Inverse`).
+
+### v0.11 — Inline transformers (no busbar required at the terminals)
+
+Transformers now follow the **same flexible-neighbour rule** as switches / fuses / cables (`isValidBranchNeighbour` in `validation.ts` dropped the transformer special-case; `"transformer"` was added to `FLEXIBLE_NEIGHBOUR_ALLOWED`). A breaker, fuse or cable can sit directly at a transformer's terminals without an explicit busbar drawn in between — common on real SLDs.
+
+This is **validation-only**; the network builder already handled it. Closed switches are absorbed into the adjacent bus (so a transformer reached through breakers lands on the real bus on each side), and where a bus is genuinely needed (e.g. transformer → cable, or transformer → motor with nothing else on that side) a **synthetic bus** is created and base-kV is propagated through the transformer ratio onto it. Verified: `SRC → BB → breaker → TX → breaker → motor` solves with the secondary as a synthetic 0.4 kV bus.
+
+### v0.12 — Reference-voltage referral on the grading chart
+
+Curves across a transformer are at different voltages, so their currents aren't directly comparable on one axis. v0.12 adds a **"Refer to:" dropdown** in the Grading header that refers every curve to one common voltage.
+
+- `gradingRefKv: number | null` in the store (view-only; null = each device's own level; reset on new/load). Action `setGradingRefKv`.
+- New store getter `getComponentKv()` → `Map<componentId, kV>`: bus members get their bus base-kV; transformers/cables get their from-bus (primary) base-kV. Uses `buildNetwork`, preserving the UI/solver layering rule.
+- Referral is a horizontal shift on the log-current axis: `I_plot = I_actual × (kV_device / refKv)` (power-conserving across the ratio). In `GradingCurves`, each curve/marker/bus-line carries a `factor`; the actual-amp points stay intact and the factor is applied only at plot time (and curves are sampled to `iMax / factor` so the referred curve still reaches the axis edge). A relay's voltage is its **breaker's** bus kV (fallback: the CT conductor's bus).
+- **Tables stay in actual amps** (physically honest); only the chart is referred. A caption + CSV header note state the reference. Devices whose kV can't be resolved are plotted unreferred with a warning note.
+- Dropdown options are the distinct voltage levels present in the network; axis label updates to "referred to X kV".
+
 ---
 
 ## Known limitations / v0.5 candidates

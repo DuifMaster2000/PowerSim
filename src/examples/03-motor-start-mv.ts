@@ -52,6 +52,7 @@ export const motorStartMv: ProjectFile = {
         locked_rotor_current_ratio: 6.5,
         starting_method: "DOL",
         starting_pf: 0.2,
+        starting_time_s: 8,
       },
     },
   ],

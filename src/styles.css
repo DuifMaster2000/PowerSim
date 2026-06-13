@@ -526,6 +526,83 @@ table.results-table td:first-child, table.results-table th:first-child {
 .edge-readout.tone-warn { color: var(--warn); border-color: var(--warn); }
 .edge-readout.tone-bad  { color: var(--bad);  border-color: var(--bad); }
 
+/* CT badge — a toroid + rating sitting on a wire that carries a current
+   transformer. Clickable to select the wire and edit the CT. */
+.edge-ct-badge {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1;
+  color: var(--text-dim);
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 2px 6px 2px 4px;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+.edge-ct-badge:hover { color: var(--text); border-color: var(--accent-dim); }
+.edge-ct-badge.selected { color: var(--accent); border-color: var(--accent); }
+
+/* Grading-study membership dot: shown on a component picked into the TCC
+   study; its colour matches the device's curve in the grading chart. */
+.node-grading-dot {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 6px rgba(34, 211, 238, 0.45);
+  z-index: 5;
+  pointer-events: none;
+}
+/* Inline-on-wire nodes: hug the 40px symbol instead of the 80px wrapper. */
+.node.switch .node-grading-dot, .node.fuse .node-grading-dot,
+.node.cable .node-grading-dot, .node.transformer .node-grading-dot {
+  top: -2px;
+  right: calc(50% - 26px);
+}
+
+/* Chips listing the components in the grading study (Grading tab). */
+.grading-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 2px 8px;
+}
+.grading-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  background: var(--bg);
+  border: 1px solid;
+  border-radius: 10px;
+  padding: 1px 4px 1px 8px;
+}
+.grading-chip button {
+  background: none;
+  border: none;
+  padding: 0 3px;
+  font-size: 12px;
+  line-height: 1;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.grading-chip button:hover { opacity: 1; }
+.grading-clear {
+  font-size: 10px;
+  padding: 1px 8px;
+}
+
 .react-flow__controls {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -640,38 +717,24 @@ table.results-table td:first-child, table.results-table th:first-child {
    float to the right so they don't break the vertical wire flow. The 80px
    wrapper width is preserved (matches every other component) so existing
    diagrams keep their alignment. */
-.node.switch, .node.fuse, .node.cable, .node.transformer, .node.ct {
+.node.switch, .node.fuse, .node.cable, .node.transformer {
   background: transparent;
   border: 1px solid transparent;
   padding: 0;
   gap: 0;
   color: var(--text-dim);
 }
-/* CT clamps directly onto a conductor — hug the 40px symbol so the toroid sits
-   flush on the wire and the control-wire handle starts at the symbol edge. */
-.node.ct {
-  min-width: 40px;
-}
-.node.switch.selected, .node.fuse.selected, .node.cable.selected, .node.transformer.selected, .node.ct.selected {
+.node.switch.selected, .node.fuse.selected, .node.cable.selected, .node.transformer.selected {
   background: rgba(34, 211, 238, 0.06);
   border-color: var(--accent);
   border-radius: 2px;
   color: var(--accent);
   box-shadow: none;
 }
-.node.switch .node-symbol, .node.fuse .node-symbol, .node.cable .node-symbol, .node.transformer .node-symbol, .node.ct .node-symbol {
+.node.switch .node-symbol, .node.fuse .node-symbol, .node.cable .node-symbol, .node.transformer .node-symbol {
   width: 40px;
   height: 40px;
 }
-/* CT label/readout float to the LEFT (its control wire exits right). */
-.node.ct .node-label, .node.ct .node-readout {
-  position: absolute;
-  right: calc(50% + 22px);
-  white-space: nowrap;
-  text-align: right;
-}
-.node.ct .node-label { top: calc(50% - 9px); }
-.node.ct .node-readout { top: calc(50% + 4px); }
 .node.switch .node-label, .node.fuse .node-label, .node.cable .node-label, .node.transformer .node-label,
 .node.switch .node-readout, .node.fuse .node-readout, .node.cable .node-readout, .node.transformer .node-readout {
   position: absolute;
