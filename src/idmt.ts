@@ -6,6 +6,7 @@
 // =====================================================================
 
 import type { RelayParams, CtParams, FuseParams, IdmtCurve } from "./types";
+import { geStandardTripTime } from "./protection/relay869Thermal";
 
 // (K, α) constants for the IEC standard inverse-time families.
 // t = TMS · K / ((I/Is)^α − 1)
@@ -257,16 +258,12 @@ export function transformerInrushPoint(ratedInA: number): CurvePoint {
 //
 // Two characteristics, by relay model:
 //  • ABB REM615 — IEC 60255-149 thermal replica:  t = τ·ln( I² / (I² − (k·Ib)²) )
-//  • GE 869     — GE "Standard" motor-overload curve: t = TDM·87.4 / (m² − 1),
-//                 m = I/(OL·Ib), TDM the curve time-dial multiplier. Verified
+//  • GE 869     — GE "Standard" motor-overload curve (exact coefficients,
+//                 Cutoff effect) via geStandardTripTime; m = I/Ib (Ib = FLA),
+//                 held constant for m ≥ 8 (locked-rotor floor). Verified
 //                 against the 869 manual's Standard Curve TD Multiplier table.
-//                 Above m = 8 the curve holds a constant minimum time (the
-//                 locked-rotor region): the denominator is capped at 8² − 1 = 63
-//                 (table flattens at 1.39 s ·TDM for m ≥ 8).
 // Ib (base/FLC current) is thermal_base_a if set, else the CT primary rating
 // (the CT is sized to the motor FLC). k is the overload / service factor.
-const GE_STD_K = 87.4;
-const GE_STD_FLOOR_DENOM = 63; // m = 8 → 8² − 1, the locked-rotor minimum-time floor
 export function thermalCurvePoints(
   relay: RelayParams,
   ct: CtParams | null,
@@ -294,9 +291,8 @@ export function thermalCurvePoints(
   const logEnd = Math.log10(endA);
   for (let s = 0; s <= steps; s++) {
     const i = Math.pow(10, logStart + ((logEnd - logStart) * s) / steps);
-    const m = i / pickup;
     const t = isGE
-      ? (cm * GE_STD_K) / Math.min(m * m - 1, GE_STD_FLOOR_DENOM)
+      ? geStandardTripTime(i / ib, cm) // GE Cutoff: multiple of FLA (= Ib)
       : tauS * Math.log((i * i) / (i * i - pickup * pickup));
     if (!isFinite(t)) continue;
     if (t > tMax) continue; // off the top near the asymptote

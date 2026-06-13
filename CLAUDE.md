@@ -283,6 +283,15 @@ Second hardware relay model, chosen to contrast the ABB's IEC math.
 - PropertiesPanel: `applyRelayModel` relabels fields in GE's ANSI notation (51P / 50P-1 / 50P-2 / 49, TD multiplier, overload factor OL, motor FLA) via `GE_LABELS`. `relayFieldVisible` shows `thermal_tau_min` on ABB but `thermal_curve_mult` on GE. IEEE curve constants verified against hand calcs.
 - **Not modelled** (beyond a static TCC curve): the 869's IEC/FlexCurve overload options, hot/cold biasing, cooling time constants, unbalance & RTD biasing, voltage-dependent curve. Only the default "Standard" overload curve is plotted.
 
+### v0.15 — GE 869 dynamic thermal model (49) engine
+
+A time-domain Thermal Capacity Used (TCU) state model of the GE 869 thermal element, separate from the steady-state TCC curve. Pure engine + validation harness; **no UI yet** (a dedicated relay-settings window is the next step).
+
+- `src/protection/relay869Thermal.ts` (pure, no React/store/solver): `Relay869ThermalModel` class — TCU register (0–100+%), `step(input)` integrating heating/cooling per time step, state machine for trip/latch/alarm/block, RTD bias, power-loss memory, and an experimental (unvalidated) voltage-dependent acceleration module behind a flag. All constants cited to the 869 manual §9.2.1.2; ambiguities marked `ASSUMPTION:`.
+  - Eq 1 unbalance biasing `Ieq = √(Iavg²·(1 + K·(I2/I1)²))`; Eq 2 Standard curve (exact GE coefficients `2.2116623 / (0.02530337·(m−1)² + 0.05054758·(m−1))`, Cutoff/Shift, locked-rotor floor at m=8) **and** IEC 255-8 hot/cold with τ1/τ2 region selection; Eq 3 `ΔTCU = 100·dt/t_trip`; Eq 4 exponential cooling to a load-dependent floor (running) or zero (stopped).
+- Exact Standard-curve coefficients are the single source of truth: `geStandardTripTime()` is exported and now also drives the grading chart's GE thermal curve in `idmt.ts` (replacing the earlier `87.4/(m²−1)` approximation).
+- `src/protection/relay869Thermal.harness.ts` (`npx tsx …`): validates t_trip at 2/3/5×FLA against the manual table (29.16 / 10.93 / 3.64 s, exact), plus scenarios — steady-overload trip time, cold-start settling at the hot/cold floor, running-vs-stopped cooling constants, unbalance biasing (K=8), and power-loss memory.
+
 ---
 
 ## Known limitations / v0.5 candidates
