@@ -122,7 +122,7 @@ export function Toolbar() {
     <header className="toolbar">
       <div className="brand">
         POWER<span style={{ color: "var(--text)" }}>·SIM</span>
-        <span className="brand-version"> v0.13</span>
+        <span className="brand-version"> v0.14</span>
       </div>
       <button
         className={explainMode ? "pill on" : "pill"}

@@ -42,6 +42,17 @@ export const RELAY_MODELS: Record<RelayModel, RelayModelSpec> = {
     curves: ["IEC-SI", "IEC-VI", "IEC-EI", "IEC-LTI", "ABB-RI", "DT"],
     stages: 3,
   },
+  // GE Multilin 869 motor protection. Phase O/C uses IEEE C37.112 curves (the
+  // time dial range 0.05–20), pickup to 20×CT; the thermal element is GE's
+  // standard motor-overload curve (curve multiplier, set via thermal_curve_mult).
+  "GE-869": {
+    label: "GE Multilin 869",
+    plugMin: 0.05, plugMax: 20, plugStep: 0.05,
+    tmsMin: 0.05, tmsMax: 20,
+    dtMin: 0.0, dtMax: 600,
+    curves: ["IEEE-MI", "IEEE-VI", "IEEE-EI", "IEC-SI", "IEC-VI", "IEC-EI", "DT"],
+    stages: 3,
+  },
 };
 
 // Default CT fitted to a wire when the user adds a current transformer to it.
@@ -71,6 +82,9 @@ export const CURVE_LABELS: Record<IdmtCurve, string> = {
   "IEC-EI": "Extremely Inverse",
   "IEC-LTI": "Long-Time Inverse",
   "ABB-RI": "RI Inverse (ABB)",
+  "IEEE-MI": "IEEE Moderately Inverse",
+  "IEEE-VI": "IEEE Very Inverse",
+  "IEEE-EI": "IEEE Extremely Inverse",
   "DT": "Definite Time",
 };
 
@@ -160,6 +174,7 @@ export const DEFAULT_PARAMS: { [K in ComponentType]: ParamsByType[K] } = {
     thermal_tau_min: 15,
     thermal_k: 1.05,
     thermal_base_a: 0,
+    thermal_curve_mult: 4,
     measured_connection_id: null,
   },
 };

@@ -273,6 +273,17 @@ Adds the motor thermal-overload protection function, completing the motor-protec
 
 ---
 
+### v0.14 — GE Multilin 869 relay model (IEEE curves + GE thermal)
+
+Second hardware relay model, chosen to contrast the ABB's IEC math.
+
+- `RelayModel` gains `"GE-869"`. Spec in `RELAY_MODELS`: pickup 0.05–20 ×In, time dial 0.05–20, DT 0–600 s, 3 stages. Curve set = **IEEE** (MI/VI/EI) + IEC (SI/VI/EI) + DT.
+- New `IdmtCurve` values `"IEEE-MI" | "IEEE-VI" | "IEEE-EI"` — IEEE C37.112: `t = TDM·(A/(mᵖ − 1) + B)`. `IEEE_CONSTANTS` in `idmt.ts` (MI 0.0515/0.114/0.02, VI 19.61/0.491/2, EI 28.2/0.1217/2). `IEC_CONSTANTS` retyped to the four IEC keys only; `stageOperateTime` dispatches IEEE alongside ABB-RI / IEC / DT.
+- **GE thermal characteristic**: `thermalCurvePoints` now dispatches on `relay_model`. GE uses the standard motor-overload curve `t = CM·87.4/(m² − 1)`, m = I/(SF·Ib), via new `RelayParams.thermal_curve_mult` (default 4, 1–15); ABB keeps the IEC replica (`τ·ln`). Shared `thermal_k` = overload/service factor, `thermal_base_a` = FLA/CT-primary.
+- PropertiesPanel: `applyRelayModel` relabels fields in GE's ANSI notation (51P / 50P-1 / 50P-2 / 49, service factor, motor FLA) via `GE_LABELS`. `relayFieldVisible` shows `thermal_tau_min` on ABB but `thermal_curve_mult` on GE. All IEEE math verified against hand calcs.
+
+---
+
 ## Known limitations / v0.5 candidates
 
 These are the documented gaps, roughly prioritised:

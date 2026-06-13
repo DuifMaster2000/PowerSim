@@ -235,27 +235,50 @@ const FIELDS: { [K in ComponentType]: FieldDef[] } = {
     // Thermal overload element (49) — base current taken from the CT rating.
     { key: "thermal_enabled", label: "Thermal (49)", type: "boolean" },
     { key: "thermal_tau_min", label: "Time constant τ", unit: "min", type: "number", step: 1, min: 1, max: 600 },
+    { key: "thermal_curve_mult", label: "Overload curve mult", type: "number", step: 0.5, min: 1, max: 15 },
     { key: "thermal_k", label: "Overload factor k", type: "number", step: 0.05, min: 1, max: 1.5 },
     { key: "thermal_base_a", label: "Base current Ib", unit: "A", type: "number", step: 10, min: 0, hint: "0 = auto (CT primary)" },
   ],
 };
 
-// Constrain the relay fields to what the selected hardware model accepts.
+// GE uses ANSI device-number notation (51P/50P/49) rather than ABB's 3I>.
+const GE_LABELS: Record<string, string> = {
+  curve: "51P curve",
+  plug_setting: "51P pickup",
+  time_multiplier: "51P time dial (TDM)",
+  definite_time_s: "51P time",
+  stage2_enabled: "High set (50P-1)",
+  stage2_curve: "50P-1 curve",
+  stage2_pickup: "50P-1 pickup",
+  stage2_tms: "50P-1 dial",
+  stage2_time_s: "50P-1 time",
+  stage3_enabled: "Instantaneous (50P-2)",
+  stage3_pickup: "50P-2 pickup",
+  stage3_time_s: "50P-2 time",
+  thermal_enabled: "Thermal O/L (49)",
+  thermal_k: "Service factor",
+  thermal_base_a: "Motor FLA",
+};
+
+// Constrain the relay fields to what the selected hardware model accepts,
+// and relabel them in the device's own notation.
 function applyRelayModel(fields: FieldDef[], model: RelayModel): FieldDef[] {
   const spec = RELAY_MODELS[model] ?? RELAY_MODELS.generic;
+  const labels = model === "GE-869" ? GE_LABELS : {};
   return fields.map((f) => {
+    const wl = { ...f, label: labels[f.key] ?? f.label };
     switch (f.key) {
       case "curve":
       case "stage2_curve":
-        return { ...f, options: spec.curves, optionLabels: spec.curves.map((c) => CURVE_LABELS[c]) };
+        return { ...wl, options: spec.curves, optionLabels: spec.curves.map((c) => CURVE_LABELS[c]) };
       case "plug_setting":
-        return { ...f, min: spec.plugMin, max: spec.plugMax, step: spec.plugStep };
+        return { ...wl, min: spec.plugMin, max: spec.plugMax, step: spec.plugStep };
       case "time_multiplier":
-        return { ...f, min: spec.tmsMin, max: spec.tmsMax };
+        return { ...wl, min: spec.tmsMin, max: spec.tmsMax };
       case "definite_time_s":
-        return { ...f, min: spec.dtMin, max: spec.dtMax };
+        return { ...wl, min: spec.dtMin, max: spec.dtMax };
       default:
-        return f;
+        return wl;
     }
   });
 }
@@ -273,8 +296,12 @@ function relayFieldVisible(f: FieldDef, params: Record<string, unknown>): boolea
   if (f.key === "stage2_tms" && params.stage2_curve === "DT") return false;
   if (f.key === "stage2_time_s" && params.stage2_curve !== "DT") return false;
   if (["stage3_pickup", "stage3_time_s"].includes(f.key) && !params.stage3_enabled) return false;
+  const isGE = model === "GE-869";
   if (f.key.startsWith("thermal") && !multiStage) return false;
-  if (["thermal_tau_min", "thermal_k", "thermal_base_a"].includes(f.key) && !params.thermal_enabled) return false;
+  if (["thermal_tau_min", "thermal_curve_mult", "thermal_k", "thermal_base_a"].includes(f.key) && !params.thermal_enabled) return false;
+  // IEC thermal replica (τ) on ABB; GE standard-overload curve multiplier on GE.
+  if (f.key === "thermal_tau_min" && isGE) return false;
+  if (f.key === "thermal_curve_mult" && !isGE) return false;
   return true;
 }
 
