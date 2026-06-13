@@ -236,6 +236,47 @@ export function transformerInrushPoint(ratedInA: number): CurvePoint {
   return { i: 12 * ratedInA, t: 0.1 };
 }
 
+// Thermal overload element (49T, IEC 60255-149 thermal replica). Models the
+// motor winding heating: the relay integrates I² over time and trips when the
+// thermal image reaches the limit. Plotted for a COLD start (no prior load,
+// θ_prev = 0), the standard convention for a coordination drawing:
+//   t = τ · ln( I² / (I² − (k·Ib)²) )
+// where Ib is the base (full-load) current — taken as the CT primary rating,
+// since the CT is sized to the motor FLC — and k is the continuous-overload
+// factor. The curve asymptotes to ∞ at I = k·Ib (runs forever at the limit)
+// and falls steeply at high current. It must sit ABOVE the motor start curve
+// and BELOW the motor/cable damage curves.
+export function thermalCurvePoints(
+  relay: RelayParams,
+  ct: CtParams | null,
+  maxCurrentA: number,
+  tMax = 100,
+  tMin = 0.01,
+): CurvePoint[] {
+  if (!(relay.thermal_enabled ?? false)) return [];
+  const ib = ct ? ct.primary_a : FALLBACK_CT_PRIMARY_A;
+  const k = relay.thermal_k ?? 1.05;
+  const tauS = (relay.thermal_tau_min ?? 15) * 60;
+  const pickup = k * ib;
+  if (pickup <= 0 || tauS <= 0) return [];
+
+  const points: CurvePoint[] = [];
+  const startA = pickup * 1.02; // just above the continuous limit (asymptote)
+  const endA = Math.max(maxCurrentA, startA * 1.1);
+  const steps = 120;
+  const logStart = Math.log10(startA);
+  const logEnd = Math.log10(endA);
+  for (let s = 0; s <= steps; s++) {
+    const i = Math.pow(10, logStart + ((logEnd - logStart) * s) / steps);
+    const t = tauS * Math.log((i * i) / (i * i - pickup * pickup));
+    if (!isFinite(t)) continue;
+    if (t > tMax) continue; // off the top near the asymptote
+    if (t < tMin) break; // bottomed out
+    points.push({ i, t });
+  }
+  return points;
+}
+
 // Approximate gG fuse total-clearing time as an inverse band. This is a
 // representative fit for educational overlay only — NOT manufacturer data.
 // t ≈ A · (I / In)^(−B), clamped to the plot's time window.

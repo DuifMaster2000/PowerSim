@@ -231,6 +231,10 @@ const FIELDS: { [K in ComponentType]: FieldDef[] } = {
     { key: "stage3_enabled", label: "Inst. stage (3I>>>)", type: "boolean" },
     { key: "stage3_pickup", label: "3I>>> pickup", unit: "×In", type: "number", step: 0.5, min: 1, max: 40 },
     { key: "stage3_time_s", label: "3I>>> time", unit: "s", type: "number", step: 0.01, min: 0.02, max: 200 },
+    // Thermal overload element (49) — base current taken from the CT rating.
+    { key: "thermal_enabled", label: "Thermal (49)", type: "boolean" },
+    { key: "thermal_tau_min", label: "Time constant τ", unit: "min", type: "number", step: 1, min: 1, max: 600 },
+    { key: "thermal_k", label: "Overload factor k", type: "number", step: 0.05, min: 1, max: 1.5 },
   ],
 };
 
@@ -267,6 +271,8 @@ function relayFieldVisible(f: FieldDef, params: Record<string, unknown>): boolea
   if (f.key === "stage2_tms" && params.stage2_curve === "DT") return false;
   if (f.key === "stage2_time_s" && params.stage2_curve !== "DT") return false;
   if (["stage3_pickup", "stage3_time_s"].includes(f.key) && !params.stage3_enabled) return false;
+  if (f.key.startsWith("thermal") && !multiStage) return false;
+  if (["thermal_tau_min", "thermal_k"].includes(f.key) && !params.thermal_enabled) return false;
   return true;
 }
 
@@ -449,7 +455,7 @@ export function PropertiesPanel() {
                         time_multiplier: clamp(params.time_multiplier as number, spec.tmsMin, spec.tmsMax),
                         definite_time_s: clamp(params.definite_time_s as number, spec.dtMin, spec.dtMax),
                         ...(spec.curves.includes(params.curve as IdmtCurve) ? {} : { curve: "IEC-SI" as IdmtCurve }),
-                        ...(spec.stages === 1 ? { stage2_enabled: false, stage3_enabled: false } : {}),
+                        ...(spec.stages === 1 ? { stage2_enabled: false, stage3_enabled: false, thermal_enabled: false } : {}),
                         ...(spec.curves.includes((params.stage2_curve as IdmtCurve) ?? "DT") ? {} : { stage2_curve: "DT" as IdmtCurve }),
                       } as any);
                     } else {

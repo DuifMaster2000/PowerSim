@@ -115,6 +115,11 @@ export interface RelayParams {
   stage3_enabled: boolean;
   stage3_pickup: number;    // ×In, 1.00–40.00
   stage3_time_s: number;    // ≥ 0.02 s
+  // Thermal overload element (49T, MPTTR thermal image). Long-time inverse
+  // curve modelling motor winding heating. Multi-stage models only.
+  thermal_enabled: boolean;
+  thermal_tau_min: number;  // thermal time constant τ [minutes]
+  thermal_k: number;        // overload factor (×base current allowed continuously, ~1.0–1.2)
   // The connection (conductor) whose CT this relay measures. Picked from a
   // dropdown of CT-equipped wires in the relay's properties panel. null when
   // the relay has no CT assigned yet (surfaces a warning).

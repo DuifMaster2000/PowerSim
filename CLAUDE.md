@@ -261,6 +261,15 @@ Curves across a transformer are at different voltages, so their currents aren't 
 - **Tables stay in actual amps** (physically honest); only the chart is referred. A caption + CSV header note state the reference. Devices whose kV can't be resolved are plotted unreferred with a warning note.
 - Dropdown options are the distinct voltage levels present in the network; axis label updates to "referred to X kV".
 
+### v0.13 — Thermal overload element (49) on the REM615
+
+Adds the motor thermal-overload protection function, completing the motor-protection coordination picture (start curve ↓ thermal ↓ damage limits).
+
+- `RelayParams` gains `thermal_enabled` / `thermal_tau_min` (τ, minutes) / `thermal_k` (continuous-overload factor); multi-stage models only, disabled by default, legacy `??` fallbacks. Switching to a 1-stage model force-disables it (alongside stages 2/3).
+- `thermalCurvePoints(relay, ct, …)` in `idmt.ts` (pure): IEC 60255-149 thermal replica, cold start (θ_prev = 0) → `t = τ·ln(I² / (I² − (k·Ib)²))`. Base current `Ib` = CT primary rating (the CT is sized to motor FLC). Asymptotes to ∞ at `k·Ib`, falls steeply at high current.
+- Plotted as a **separate** curve (own dash `6 2 1 2`, label `· thermal 49 (τNm)`) in the relay's colour — not folded into the overcurrent composite or the fault-current operate-time markers (thermal is an overload, not a fault, function). Referral-aware via the curve `factor`.
+- PropertiesPanel: thermal section under the stages on multi-stage models; τ/k shown only when enabled. Verified the curve sits above a 6×FLC / 8 s motor start (28 s trip at locked rotor) while still protecting sustained overloads.
+
 ---
 
 ## Known limitations / v0.5 candidates

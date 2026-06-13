@@ -156,6 +156,9 @@ export const DEFAULT_PARAMS: { [K in ComponentType]: ParamsByType[K] } = {
     stage3_enabled: false,
     stage3_pickup: 20.0,
     stage3_time_s: 0.05,
+    thermal_enabled: false,
+    thermal_tau_min: 15,
+    thermal_k: 1.05,
     measured_connection_id: null,
   },
 };
