@@ -6,18 +6,18 @@
 import type { ProjectFile, ValidationIssue, SwitchParams, TransformerParams, ComponentType, RelayParams } from "./types";
 import { TERMINAL_COUNT, IS_BRANCH } from "./defaults";
 
-// Switches, fuses, and cables can sit directly between two non-bus components
-// — the network builder synthesises a bus node automatically when needed.
-// Transformers still need a true bus on each side (different voltage levels).
+// Every branch element (transformer, cable, switch, fuse) may sit directly
+// against a bus, a terminal device, or another in-line device — the network
+// builder absorbs closed switches into the adjacent bus and synthesises a
+// bus node wherever one is genuinely needed (e.g. a transformer feeding a
+// cable). So a breaker right at a transformer's terminals is valid without
+// drawing an explicit busbar in between.
 const FLEXIBLE_NEIGHBOUR_ALLOWED: ReadonlySet<ComponentType> = new Set([
-  "busbar", "load", "motor", "switch", "fuse", "cable", "grid_source",
+  "busbar", "load", "motor", "switch", "fuse", "cable", "grid_source", "transformer",
 ]);
 
-function isValidBranchNeighbour(branchType: ComponentType, otherType: ComponentType): boolean {
-  if (branchType === "switch" || branchType === "fuse" || branchType === "cable") {
-    return FLEXIBLE_NEIGHBOUR_ALLOWED.has(otherType);
-  }
-  return otherType === "busbar";
+function isValidBranchNeighbour(otherType: ComponentType): boolean {
+  return FLEXIBLE_NEIGHBOUR_ALLOWED.has(otherType);
 }
 
 export function validateProject(project: ProjectFile): ValidationIssue[] {
@@ -72,9 +72,10 @@ export function validateProject(project: ProjectFile): ValidationIssue[] {
     }
   }
 
-  // 3. Branch elements must connect to allowed neighbours.
-  //    Transformers / cables: bus-to-bus only.
-  //    Switches: may also chain to terminals (load, motor, grid source) or other switches.
+  // 3. Branch elements (transformer / cable / switch / fuse) must connect to
+  //    allowed neighbours. All four now share the flexible rule: a bus, a
+  //    terminal device, or another in-line device. The network builder
+  //    synthesises a bus between them where one is electrically needed.
   for (const conn of project.connections) {
     const a = compById.get(conn.fromComponent);
     const b = compById.get(conn.toComponent);
@@ -82,14 +83,14 @@ export function validateProject(project: ProjectFile): ValidationIssue[] {
     // Relay control wires are not part of the power circuit — skip the
     // power-neighbour rules for them.
     if (a.type === "relay" || b.type === "relay") continue;
-    if (IS_BRANCH[a.type] && !isValidBranchNeighbour(a.type, b.type)) {
+    if (IS_BRANCH[a.type] && !isValidBranchNeighbour(b.type)) {
       issues.push({
         level: "error",
         message: `${a.label} cannot connect to a ${b.type} on this side.`,
         componentId: a.id,
       });
     }
-    if (IS_BRANCH[b.type] && !isValidBranchNeighbour(b.type, a.type)) {
+    if (IS_BRANCH[b.type] && !isValidBranchNeighbour(a.type)) {
       issues.push({
         level: "error",
         message: `${b.label} cannot connect to a ${a.type} on this side.`,

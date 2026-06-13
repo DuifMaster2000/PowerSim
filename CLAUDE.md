@@ -245,6 +245,12 @@ Relays now carry a **hardware model** that constrains their settings to what the
 - PropertiesPanel: stage fields show only on multi-stage models (`relayFieldVisible`); per-stage timing fields follow the stage's curve type (TMS for IDMT, time for DT — applied to stage 1 too). Stage enables render Enabled/Disabled. Switching to a 1-stage model **force-disables stages 2/3** so hidden stages can't shape the curve.
 - Grading legend tags multi-stage relays (e.g. `RLY-01 · 3-stage Standard Inverse`).
 
+### v0.11 — Inline transformers (no busbar required at the terminals)
+
+Transformers now follow the **same flexible-neighbour rule** as switches / fuses / cables (`isValidBranchNeighbour` in `validation.ts` dropped the transformer special-case; `"transformer"` was added to `FLEXIBLE_NEIGHBOUR_ALLOWED`). A breaker, fuse or cable can sit directly at a transformer's terminals without an explicit busbar drawn in between — common on real SLDs.
+
+This is **validation-only**; the network builder already handled it. Closed switches are absorbed into the adjacent bus (so a transformer reached through breakers lands on the real bus on each side), and where a bus is genuinely needed (e.g. transformer → cable, or transformer → motor with nothing else on that side) a **synthetic bus** is created and base-kV is propagated through the transformer ratio onto it. Verified: `SRC → BB → breaker → TX → breaker → motor` solves with the secondary as a synthetic 0.4 kV bus.
+
 ---
 
 ## Known limitations / v0.5 candidates
