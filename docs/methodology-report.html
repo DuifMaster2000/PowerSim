@@ -273,7 +273,8 @@ Voltage referral:            I_plot = I_actual · (kV_device / kV_ref)</div>
 Normalised energy:  lg En = K1 + K2 + 1.081·lgIa + 0.0011·G
 Incident energy:    E[cal/cm²] = Cf · En · (t / 0.2) · (610 / D)^x
 Arc-flash boundary: D_B = 610 · ( Cf·En·(t/0.2) / 1.2 )^(1/x)</div>
-<p>Equipment classes (15 kV / 5 kV / LV switchgear, MCC, cable, open-air) carry the conductor gap G, distance exponent x and working distance D per IEEE 1584 Table 4. PPE category follows NFPA 70E thresholds (1.2 / 4 / 8 / 25 / 40 cal/cm²).</p>
+<p>The busbar carries an equipment <strong>class</strong> (switchgear, MCC/panelboard, cable, open-air) and grounded/ungrounded; the conductor gap G, distance exponent x and working distance D are then <strong>selected automatically from the bus's voltage band</strong> (≤1 kV / &gt;1–5 kV / &gt;5–15 kV) per IEEE 1584 Table 4 (<code>resolveEquipment</code>). PPE category follows NFPA 70E thresholds (1.2 / 4 / 8 / 25 / 40 cal/cm²).</p>
+<div class="note"><strong>Validity.</strong> The IEEE 1584-2002 empirical model is only valid 0.208–15 kV. Above 15 kV (e.g. 33 kV, 132 kV) the result is flagged <em>out of range</em> in the panel — the Lee theoretical-max-power method is the correct tool there and is not yet implemented.</div>
 <p><strong>Clearing time from protection:</strong> the engine derives the arc duration <em>t</em> from the fastest relay's operate time evaluated at the <strong>arcing</strong> current (each relay's fault current is scaled from the bolted bus current by the arcing/bolted ratio). Because arcing current is lower than bolted, the device clears slightly slower — the key arc-flash subtlety — and a flagged 2.0 s fallback is used if nothing operates.</p>
 <div class="fns"><h4>Implementing functions</h4>
 <ul>

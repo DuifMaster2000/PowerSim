@@ -613,6 +613,11 @@ function ResultsContent() {
           </div>
         </div>
         <div className="results-body">
+          {af.outOfRange && (
+            <div style={{ background: "var(--warn-bg, rgba(251,191,36,0.12))", border: "1px solid var(--warn)", color: "var(--warn)", borderRadius: 6, padding: "8px 12px", marginBottom: 10, fontSize: 12, lineHeight: 1.5 }}>
+              ⚠ {af.voltageKv.toFixed(1)} kV is <strong>above IEEE 1584-2002's 15 kV validity limit</strong> — these numbers are an extrapolation. For HV (e.g. 33 kV / 132 kV) the Lee method is the recommended model; treat this result as indicative only.
+            </div>
+          )}
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
             <div className={`af-badge ${toneClass}`}>
               <div className="af-cal">{af.incidentEnergyCal.toFixed(1)}<span> cal/cm²</span></div>

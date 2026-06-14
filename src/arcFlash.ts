@@ -12,26 +12,69 @@
 // 1584-2002 §5 (equations) and Table 4 (gaps / distance exponents).
 // =====================================================================
 
-export interface EquipmentClass {
+export interface EquipmentType {
   label: string;
-  gapMm: number;            // conductor gap (Table 4)
-  distanceExponent: number; // x in the incident-energy distance term (Table 4)
-  workingDistanceMm: number;// typical working distance (Table 4)
-  openAir: boolean;         // open-air vs in-a-box (enclosure)
 }
 
-// IEEE 1584-2002 Table 4 — typical gaps, distance exponents and working
-// distances by equipment class.
-export const EQUIPMENT_CLASSES: Record<string, EquipmentClass> = {
-  switchgear_15kv: { label: "15 kV switchgear", gapMm: 152, distanceExponent: 0.973, workingDistanceMm: 910, openAir: false },
-  switchgear_5kv: { label: "5 kV switchgear", gapMm: 104, distanceExponent: 0.973, workingDistanceMm: 910, openAir: false },
-  switchgear_lv: { label: "LV switchgear (<1 kV)", gapMm: 32, distanceExponent: 1.473, workingDistanceMm: 610, openAir: false },
-  mcc_panel: { label: "MCC / panelboard", gapMm: 25, distanceExponent: 1.641, workingDistanceMm: 455, openAir: false },
-  cable: { label: "Cable", gapMm: 13, distanceExponent: 2.0, workingDistanceMm: 455, openAir: false },
-  open_air: { label: "Open-air conductors", gapMm: 13, distanceExponent: 2.0, workingDistanceMm: 910, openAir: true },
+// Equipment classes (IEEE 1584-2002 Table 4). The conductor gap and distance
+// exponent depend on BOTH the class and the voltage band — see resolveEquipment.
+export const EQUIPMENT_TYPES: Record<string, EquipmentType> = {
+  switchgear: { label: "Switchgear" },
+  mcc_panel: { label: "MCC / panelboard" },
+  cable: { label: "Cable" },
+  open_air: { label: "Open-air conductors" },
 };
 
-export const DEFAULT_EQUIPMENT_CLASS = "switchgear_lv";
+export const DEFAULT_EQUIPMENT_TYPE = "switchgear";
+
+// Map any (possibly legacy) class key to one of the four equipment types.
+function normaliseType(key: string): string {
+  if (key.startsWith("switchgear")) return "switchgear";
+  if (key.startsWith("mcc")) return "mcc_panel";
+  if (key.startsWith("cable")) return "cable";
+  if (key.startsWith("open")) return "open_air";
+  return DEFAULT_EQUIPMENT_TYPE;
+}
+
+export interface ResolvedEquipment {
+  typeLabel: string;
+  bandLabel: string;
+  gapMm: number;
+  distanceExponent: number;  // x
+  workingDistanceMm: number; // D
+  openAir: boolean;
+  inRange: boolean;          // false above 15 kV (outside IEEE 1584-2002 validity)
+}
+
+// Resolve the conductor gap, distance exponent and working distance from the
+// equipment class AND the bus voltage band — IEEE 1584-2002 Table 4. The
+// empirical model is only valid 0.208–15 kV; above 15 kV the highest-band
+// factors are used but inRange is false (the Lee method is the correct tool).
+export function resolveEquipment(typeKey: string, voltageKv: number): ResolvedEquipment {
+  const type = normaliseType(typeKey);
+  const inRange = voltageKv <= 15;
+  // Band: ≤1 kV / >1–5 kV / >5–15 kV (and >15 kV reuses the top band, flagged).
+  const band: "lv" | "mv5" | "mv15" = voltageKv <= 1 ? "lv" : voltageKv <= 5 ? "mv5" : "mv15";
+  const bandLabel = band === "lv" ? "≤1 kV" : band === "mv5" ? ">1–5 kV"
+    : inRange ? ">5–15 kV" : ">15 kV — outside IEEE 1584 range";
+
+  // [gapMm, x, workingDistanceMm] per type × band (Table 4). MCC and cable are
+  // single-gap classes (predominantly LV); switchgear/open-air vary by band.
+  const t = (gapMm: number, x: number, wd: number, openAir = false): ResolvedEquipment => ({
+    typeLabel: EQUIPMENT_TYPES[type].label, bandLabel, gapMm, distanceExponent: x, workingDistanceMm: wd, openAir, inRange,
+  });
+  if (type === "cable") return t(13, 2.0, 455);
+  if (type === "mcc_panel") return t(25, 1.641, 455);
+  if (type === "open_air") {
+    if (band === "lv") return t(10, 2.0, 610, true);
+    if (band === "mv5") return t(40, 2.0, 910, true);
+    return t(95, 2.0, 910, true);
+  }
+  // switchgear
+  if (band === "lv") return t(32, 1.473, 610);
+  if (band === "mv5") return t(104, 0.973, 910);
+  return t(152, 0.973, 910);
+}
 
 const lg = (x: number) => Math.log10(x);
 

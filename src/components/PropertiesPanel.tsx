@@ -7,7 +7,7 @@
 import { useState, useEffect } from "react";
 import { useStore, isControlConnection } from "../store";
 import { COMPONENT_LABELS, STARTING_PF_DEFAULTS, STANDARD_FUSE_SIZES_A, CURVE_LABELS, DEFAULT_CT_PARAMS, RELAY_MODELS } from "../defaults";
-import { EQUIPMENT_CLASSES } from "../arcFlash";
+import { EQUIPMENT_TYPES } from "../arcFlash";
 import type { PowerComponent, ComponentType, MotorStartingMethod, RelayParams, RelayModel, IdmtCurve } from "../types";
 import { Explain, Info } from "./Explain";
 
@@ -146,8 +146,8 @@ const FIELDS: { [K in ComponentType]: FieldDef[] } = {
       key: "arc_equipment_class",
       label: "Arc-flash equipment",
       type: "select",
-      options: Object.keys(EQUIPMENT_CLASSES),
-      optionLabels: Object.values(EQUIPMENT_CLASSES).map((c) => c.label),
+      options: Object.keys(EQUIPMENT_TYPES),
+      optionLabels: Object.values(EQUIPMENT_TYPES).map((c) => c.label),
     },
     { key: "arc_grounded", label: "System grounded", type: "boolean" },
   ],

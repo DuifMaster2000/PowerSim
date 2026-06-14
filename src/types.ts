@@ -339,6 +339,7 @@ export interface ArcFlashResult {
   gapMm: number;
   workingDistanceMm: number;
   grounded: boolean;
+  outOfRange: boolean;       // true above 15 kV — IEEE 1584-2002 is extrapolated (use Lee)
   incidentEnergyCal: number; // cal/cm² at the working distance
   arcFlashBoundaryMm: number;
   ppeCategory: number | null;

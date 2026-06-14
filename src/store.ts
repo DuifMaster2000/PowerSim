@@ -19,7 +19,7 @@ import type { CtParams, RelayParams, MotorParams, BusbarParams } from "./types";
 import { DEFAULT_PARAMS, COMPONENT_PREFIXES } from "./defaults";
 import { validateProject } from "./validation";
 import { buildNetwork, effectiveStartingCurrentRatio } from "./solver/network";
-import { arcingCurrentKa, incidentEnergyCal, arcFlashBoundaryMm, ppeRating, EQUIPMENT_CLASSES as ARC_CLASSES, DEFAULT_EQUIPMENT_CLASS } from "./arcFlash";
+import { arcingCurrentKa, incidentEnergyCal, arcFlashBoundaryMm, ppeRating, resolveEquipment, DEFAULT_EQUIPMENT_TYPE } from "./arcFlash";
 import { idmtOperateTime } from "./idmt";
 
 // A connection is a control wire (not part of the power circuit) iff either
@@ -865,8 +865,7 @@ export const useStore = create<State>((set, get) => ({
       // buses fall back to defaults.
       const busComp = get().components.find((c) => c.id === faultId && c.type === "busbar");
       const bp = busComp ? (busComp.parameters as BusbarParams) : undefined;
-      const classKey = bp?.arc_equipment_class ?? DEFAULT_EQUIPMENT_CLASS;
-      const eq = ARC_CLASSES[classKey] ?? ARC_CLASSES[DEFAULT_EQUIPMENT_CLASS];
+      const eq = resolveEquipment(bp?.arc_equipment_class ?? DEFAULT_EQUIPMENT_TYPE, voltageKv);
       const grounded = bp?.arc_grounded ?? true;
 
       const arcingKa = arcingCurrentKa(boltedKa, voltageKv, eq.openAir, eq.gapMm);
@@ -920,10 +919,11 @@ export const useStore = create<State>((set, get) => ({
           arcingKa,
           clearingTimeS,
           clearingSource,
-          equipmentClassLabel: eq.label,
+          equipmentClassLabel: `${eq.typeLabel} · ${eq.bandLabel}`,
           gapMm: eq.gapMm,
           workingDistanceMm: eq.workingDistanceMm,
           grounded,
+          outOfRange: !eq.inRange,
           incidentEnergyCal: cal,
           arcFlashBoundaryMm: arcFlashBoundaryMm(energyInput),
           ppeCategory: ppe.category,
