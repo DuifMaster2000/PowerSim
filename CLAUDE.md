@@ -301,6 +301,16 @@ A modal sandbox that drives `Relay869ThermalModel` so you can *see* the dynamic 
 - Not persisted to the project file; purely exploratory. RTD bias is wired (per-phase temperature column); the voltage-dependent module is not exposed (experimental).
 - Polish: a self-contained always-on `InfoTip` (fixed-positioned, not clipped by the modal scroll) gives a plain-English `HELP[...]` tooltip on every setting + scenario column; a colour **legend** under the chart (TCU / current / trip / alarm); phase labels are width-culled so they never overlap (wide phases labelled, slivers named only in the table).
 
+### v0.17 — Arc flash (IEEE 1584-2002)
+
+The capstone that ties the short-circuit and protection layers into one deliverable: incident energy + PPE per bus.
+
+- `src/arcFlash.ts` (pure): IEEE 1584-2002 — `arcingCurrentKa` (Eq 1 <1 kV / Eq 2 ≥1 kV), `incidentEnergyCal` (cal/cm² = Cf·En·(t/0.2)·(610/D)^x), `arcFlashBoundaryMm`, `ppeRating` (NFPA 70E categories). `EQUIPMENT_CLASSES` table (gap / distance exponent x / working distance) for 15 kV / 5 kV / LV switchgear, MCC, cable, open-air. **Validated** against the 480 V/20 kA worked example (Ia = 11.22 kA) and the linear-in-time scaling.
+- `BusbarParams` gains optional `arc_equipment_class` / `arc_grounded` (legacy `??`). PropertiesPanel: equipment-class select + Grounded/Ungrounded toggle on busbars.
+- Store: `RunMode` += `"arcflash"`, `arcFlash: ArcFlashResult | null`, `runArcFlash()`. It runs a short circuit at the selected fault bus, computes the arcing current, then **derives the clearing time from protection**: the fastest relay's operate time evaluated at the *arcing* current (each relay's fault current scaled from the bolted bus current by the arcing/bolted ratio — radial approximation), falling back to an assumed 2.0 s (flagged) when nothing operates. The arcing-current subtlety (device operates slower than at a bolted fault) is captured.
+- Toolbar: "Run Arc Flash" button (needs a selected busbar). ResultsPanel: a big cal/cm² badge (tone by PPE), a table (bolted/arcing current, clearing time + device, incident energy, boundary) and CSV export.
+- **Not modelled**: IEEE 1584-2018 (electrode configs, enclosure-size correction); a whole-network arc-flash table (currently the selected bus only); fuse clearing times in the auto-derivation (relays only).
+
 ---
 
 ## Known limitations / v0.5 candidates

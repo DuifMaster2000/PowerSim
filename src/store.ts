@@ -12,12 +12,15 @@ import type {
   LoadFlowResult,
   ShortCircuitResult,
   MotorStartingResult,
+  ArcFlashResult,
   ValidationIssue,
 } from "./types";
-import type { CtParams, RelayParams, MotorParams } from "./types";
+import type { CtParams, RelayParams, MotorParams, BusbarParams } from "./types";
 import { DEFAULT_PARAMS, COMPONENT_PREFIXES } from "./defaults";
 import { validateProject } from "./validation";
 import { buildNetwork, effectiveStartingCurrentRatio } from "./solver/network";
+import { arcingCurrentKa, incidentEnergyCal, arcFlashBoundaryMm, ppeRating, EQUIPMENT_CLASSES as ARC_CLASSES, DEFAULT_EQUIPMENT_CLASS } from "./arcFlash";
+import { idmtOperateTime } from "./idmt";
 
 // A connection is a control wire (not part of the power circuit) iff either
 // endpoint is a relay. Used by the canvas (dashed styling), the network builder,
@@ -152,7 +155,7 @@ const nextLabel = (prefix: string, existing: PowerComponent[]) => {
   return `${prefix}-${String(sameType.length + 1).padStart(2, "0")}`;
 };
 
-type RunMode = "idle" | "loadflow" | "shortcircuit" | "motorstart";
+type RunMode = "idle" | "loadflow" | "shortcircuit" | "motorstart" | "arcflash";
 
 // View-state preferences live outside the project file and outside
 // undo/redo. They're persisted to localStorage so they survive reloads.
@@ -199,6 +202,7 @@ interface State {
   loadFlow: LoadFlowResult | null;
   shortCircuit: ShortCircuitResult | null;
   motorStarting: MotorStartingResult | null;
+  arcFlash: ArcFlashResult | null;
   validation: ValidationIssue[];
 
   // For short-circuit: which bus is the fault target
@@ -307,6 +311,7 @@ interface State {
   runShortCircuit: () => void;
   setStartingMotor: (motorId: string | null) => void;
   runMotorStarting: () => void;
+  runArcFlash: () => void;
   clearResults: () => void;
 
   // Solver-derived view: synthetic buses (those without a real busbar component)
@@ -363,6 +368,7 @@ const newProjectState = () => ({
   loadFlow: null,
   shortCircuit: null,
   motorStarting: null as MotorStartingResult | null,
+  arcFlash: null as ArcFlashResult | null,
   validation: [] as ValidationIssue[],
   faultBusId: null as string | null,
   startingMotorId: null as string | null,
@@ -404,6 +410,7 @@ export const useStore = create<State>((set, get) => ({
       loadFlow: null,
       shortCircuit: null,
       motorStarting: null,
+      arcFlash: null,
       isDirty: true,
     }));
     return id;
@@ -429,6 +436,7 @@ export const useStore = create<State>((set, get) => ({
       loadFlow: null,
       shortCircuit: null,
       motorStarting: null,
+      arcFlash: null,
       isDirty: true,
     }));
     return newId;
@@ -444,6 +452,7 @@ export const useStore = create<State>((set, get) => ({
       loadFlow: null,
       shortCircuit: null,
       motorStarting: null,
+      arcFlash: null,
       isDirty: true,
     }));
   },
@@ -467,6 +476,7 @@ export const useStore = create<State>((set, get) => ({
       loadFlow: null,
       shortCircuit: null,
       motorStarting: null,
+      arcFlash: null,
       isDirty: true,
     }));
   },
@@ -516,6 +526,7 @@ export const useStore = create<State>((set, get) => ({
       loadFlow: null,
       shortCircuit: null,
       motorStarting: null,
+      arcFlash: null,
       isDirty: true,
     }));
   },
@@ -535,6 +546,7 @@ export const useStore = create<State>((set, get) => ({
       loadFlow: null,
       shortCircuit: null,
       motorStarting: null,
+      arcFlash: null,
       isDirty: true,
     }));
   },
@@ -565,7 +577,7 @@ export const useStore = create<State>((set, get) => ({
     get().updateComponentParams(id, { closed: !cur });
   },
 
-  setBaseMva: (v) => set((s) => ({ ...withHistory(s), baseMva: v, loadFlow: null, shortCircuit: null, motorStarting: null, isDirty: true })),
+  setBaseMva: (v) => set((s) => ({ ...withHistory(s), baseMva: v, loadFlow: null, shortCircuit: null, motorStarting: null, arcFlash: null, isDirty: true })),
   setFrequencyHz: (v) => set((s) => ({ ...withHistory(s), frequencyHz: v, isDirty: true })),
   setProjectName: (n) => set({ projectName: n, isDirty: true }),
   setShortCircuitCFactor: (v) => set({ shortCircuitCFactor: v }),
@@ -619,6 +631,7 @@ export const useStore = create<State>((set, get) => ({
       loadFlow: null,
       shortCircuit: null,
       motorStarting: null,
+      arcFlash: null,
       validation: [],
       faultBusId: null,
       startingMotorId: null,
@@ -659,6 +672,7 @@ export const useStore = create<State>((set, get) => ({
       loadFlow: null,
       shortCircuit: null,
       motorStarting: null,
+      arcFlash: null,
       runMode: "idle",
       validation: [],
     });
@@ -678,6 +692,7 @@ export const useStore = create<State>((set, get) => ({
       loadFlow: null,
       shortCircuit: null,
       motorStarting: null,
+      arcFlash: null,
       runMode: "idle",
       validation: [],
     });
@@ -776,6 +791,7 @@ export const useStore = create<State>((set, get) => ({
       set({
         runMode: "motorstart",
         motorStarting: null,
+        arcFlash: null,
         validation: [
           ...get().validation,
           { level: "error", message: "Select a motor first, then click 'Run Motor Start'." },
@@ -788,6 +804,7 @@ export const useStore = create<State>((set, get) => ({
       set({
         runMode: "motorstart",
         motorStarting: null,
+        arcFlash: null,
         validation: [
           ...get().validation,
           { level: "error", message: "Selected starting motor no longer exists — pick another motor." },
@@ -801,6 +818,7 @@ export const useStore = create<State>((set, get) => ({
     } catch (err) {
       set({
         motorStarting: null,
+        arcFlash: null,
         runMode: "motorstart",
         validation: [
           ...get().validation,
@@ -813,7 +831,119 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
-  clearResults: () => set({ loadFlow: null, shortCircuit: null, motorStarting: null, runMode: "idle" }),
+  runArcFlash: () => {
+    const issues = get().validate();
+    if (issues.some((i) => i.level === "error")) {
+      set({ runMode: "idle" });
+      return;
+    }
+    const faultId = get().faultBusId;
+    if (!faultId) {
+      set({
+        runMode: "arcflash",
+        arcFlash: null,
+        validation: [
+          ...get().validation,
+          { level: "error", message: "Select a busbar first, then click 'Run Arc Flash'." },
+        ],
+      });
+      return;
+    }
+    try {
+      const net = buildNetwork(get().exportProject());
+      const busIdx = net.busIndexById.get(faultId);
+      if (busIdx === undefined) {
+        set({ runMode: "idle" });
+        return;
+      }
+      const sc = runShortCircuit(net, busIdx, get().shortCircuitCFactor);
+      const bus = net.buses[busIdx];
+      const voltageKv = bus.baseKv || bus.nominalKv;
+      const boltedKa = sc.ikSymKa;
+
+      // Equipment config from the busbar component (real buses); synthetic
+      // buses fall back to defaults.
+      const busComp = get().components.find((c) => c.id === faultId && c.type === "busbar");
+      const bp = busComp ? (busComp.parameters as BusbarParams) : undefined;
+      const classKey = bp?.arc_equipment_class ?? DEFAULT_EQUIPMENT_CLASS;
+      const eq = ARC_CLASSES[classKey] ?? ARC_CLASSES[DEFAULT_EQUIPMENT_CLASS];
+      const grounded = bp?.arc_grounded ?? true;
+
+      const arcingKa = arcingCurrentKa(boltedKa, voltageKv, eq.openAir, eq.gapMm);
+
+      // Clearing time: the fastest relay that operates at the arcing current.
+      // Each relay's fault current is scaled from the bolted bus current by the
+      // arcing/bolted ratio (radial approximation), then evaluated on its curve.
+      const ratio = boltedKa > 0 ? arcingKa / boltedKa : 0;
+      const components = get().components;
+      const connections = get().connections;
+      const busIdOfComponent = (compId: string): string | null =>
+        net.buses.find((b) => b.memberComponentIds?.includes(compId))?.id ?? null;
+      let clearingTimeS = 2.0; // assumed maximum when nothing operates (flagged)
+      let clearingSource = "assumed 2.0 s — no relay operates at the arcing current";
+      let fastest = Infinity;
+      for (const relay of components.filter((c) => c.type === "relay")) {
+        const links = resolveRelayLinks(relay.id, components, connections);
+        if (!links.breakerId) continue;
+        const relayBusId = busIdOfComponent(links.breakerId);
+        if (!relayBusId) continue;
+        let boltedAtRelay = 0;
+        for (const bf of sc.branchFlows) {
+          if (bf.fromBusId === relayBusId) boltedAtRelay = Math.max(boltedAtRelay, bf.fromSideKa);
+          else if (bf.toBusId === relayBusId) boltedAtRelay = Math.max(boltedAtRelay, bf.toSideKa);
+        }
+        if (boltedAtRelay <= 0) boltedAtRelay = boltedKa;
+        const arcingAtRelay = boltedAtRelay * 1000 * ratio; // primary amps
+        const t = idmtOperateTime(relay.parameters as RelayParams, links.ct, arcingAtRelay);
+        if (isFinite(t) && t < fastest) {
+          fastest = t;
+          clearingTimeS = t;
+          clearingSource = `${relay.label} clears in ${t.toFixed(2)} s`;
+        }
+      }
+
+      const energyInput = {
+        boltedKa, arcingKa, voltageKv,
+        openAir: eq.openAir, grounded, gapMm: eq.gapMm,
+        distanceExponent: eq.distanceExponent, workingDistanceMm: eq.workingDistanceMm,
+        clearingTimeS,
+      };
+      const cal = incidentEnergyCal(energyInput);
+      const ppe = ppeRating(cal);
+
+      set({
+        arcFlash: {
+          busId: faultId,
+          busLabel: bus.label,
+          voltageKv,
+          boltedKa,
+          arcingKa,
+          clearingTimeS,
+          clearingSource,
+          equipmentClassLabel: eq.label,
+          gapMm: eq.gapMm,
+          workingDistanceMm: eq.workingDistanceMm,
+          grounded,
+          incidentEnergyCal: cal,
+          arcFlashBoundaryMm: arcFlashBoundaryMm(energyInput),
+          ppeCategory: ppe.category,
+          ppeLabel: ppe.label,
+        },
+        runMode: "arcflash",
+      });
+    } catch (err) {
+      set({
+        arcFlash: null,
+        runMode: "arcflash",
+        validation: [
+          ...get().validation,
+          { level: "error", message: err instanceof Error ? err.message : "Arc-flash error" },
+        ],
+      });
+    }
+  },
+
+  clearResults: () => set({ loadFlow: null, shortCircuit: null, motorStarting: null, arcFlash: null, runMode: "idle" }),
 
   getSyntheticBuses: () => {
     try {

@@ -31,6 +31,10 @@ export interface GridSourceParams {
 export interface BusbarParams {
   nominal_voltage_kv: number;
   length_px: number; // visual length of the busbar on the canvas
+  // Arc-flash equipment characteristics (IEEE 1584). Optional — legacy files
+  // and example networks default these via ?? at the use sites.
+  arc_equipment_class?: string; // key into EQUIPMENT_CLASSES (gap, working distance, x)
+  arc_grounded?: boolean;       // system grounding — affects incident energy
 }
 
 export interface TransformerParams {
@@ -319,6 +323,26 @@ export interface ShortCircuitResult {
   ipPeakKa: number; // i_p — peak short-circuit current
   contributions: ShortCircuitContribution[];
   branchFlows: ShortCircuitBranchFlow[];
+}
+
+// ---------- Arc flash (IEEE 1584) ----------
+
+export interface ArcFlashResult {
+  busId: string;
+  busLabel: string;
+  voltageKv: number;
+  boltedKa: number;          // bolted 3-phase fault current
+  arcingKa: number;          // arcing current (< bolted)
+  clearingTimeS: number;     // arc duration used
+  clearingSource: string;    // protective device that set the time, or "assumed"
+  equipmentClassLabel: string;
+  gapMm: number;
+  workingDistanceMm: number;
+  grounded: boolean;
+  incidentEnergyCal: number; // cal/cm² at the working distance
+  arcFlashBoundaryMm: number;
+  ppeCategory: number | null;
+  ppeLabel: string;
 }
 
 // ---------- Validation ----------
