@@ -6,14 +6,23 @@
 // =====================================================================
 
 import type { RelayParams, CtParams, FuseParams, IdmtCurve } from "./types";
+import { geStandardTripTime } from "./protection/relay869Thermal";
 
 // (K, α) constants for the IEC standard inverse-time families.
 // t = TMS · K / ((I/Is)^α − 1)
-const IEC_CONSTANTS: Record<Exclude<IdmtCurve, "DT" | "ABB-RI">, { k: number; alpha: number }> = {
+const IEC_CONSTANTS: Record<"IEC-SI" | "IEC-VI" | "IEC-EI" | "IEC-LTI", { k: number; alpha: number }> = {
   "IEC-SI": { k: 0.14, alpha: 0.02 },
   "IEC-VI": { k: 13.5, alpha: 1.0 },
   "IEC-EI": { k: 80.0, alpha: 2.0 },
   "IEC-LTI": { k: 120.0, alpha: 1.0 },
+};
+
+// (A, B, p) constants for the IEEE C37.112 inverse-time families.
+// t = TDM · ( A / ((I/Is)^p − 1) + B )  — used by GE and other ANSI relays.
+const IEEE_CONSTANTS: Record<"IEEE-MI" | "IEEE-VI" | "IEEE-EI", { a: number; b: number; p: number }> = {
+  "IEEE-MI": { a: 0.0515, b: 0.1140, p: 0.02 },
+  "IEEE-VI": { a: 19.61, b: 0.491, p: 2.0 },
+  "IEEE-EI": { a: 28.2, b: 0.1217, p: 2.0 },
 };
 
 // Default CT primary used when a relay has no CT wired to it. The grading view
@@ -48,6 +57,12 @@ function stageOperateTime(
     // ~2.95·k at high multiples instead of racing to zero like IEC curves —
     // that near-constant tail is what grades it against old ABB disc relays.
     return tms / (0.339 - 0.236 / m);
+  }
+
+  if (curve === "IEEE-MI" || curve === "IEEE-VI" || curve === "IEEE-EI") {
+    // IEEE C37.112: t = TDM·( A/(m^p − 1) + B ).
+    const { a, b, p } = IEEE_CONSTANTS[curve];
+    return tms * (a / (Math.pow(m, p) - 1) + b);
   }
 
   const { k, alpha } = IEC_CONSTANTS[curve];
@@ -234,6 +249,57 @@ export function transformerDamageCurvePoints(
 // curves must pass above this dot or the transformer trips on energisation.
 export function transformerInrushPoint(ratedInA: number): CurvePoint {
   return { i: 12 * ratedInA, t: 0.1 };
+}
+
+// Thermal overload element (49). Models motor winding heating; the curve
+// asymptotes to ∞ at the continuous limit (k·Ib) and falls steeply at high
+// current, so it must sit ABOVE the motor start curve and BELOW the
+// motor/cable damage curves. Plotted for a COLD start (no prior load).
+//
+// Two characteristics, by relay model:
+//  • ABB REM615 — IEC 60255-149 thermal replica:  t = τ·ln( I² / (I² − (k·Ib)²) )
+//  • GE 869     — GE "Standard" motor-overload curve (exact coefficients,
+//                 Cutoff effect) via geStandardTripTime; m = I/Ib (Ib = FLA),
+//                 held constant for m ≥ 8 (locked-rotor floor). Verified
+//                 against the 869 manual's Standard Curve TD Multiplier table.
+// Ib (base/FLC current) is thermal_base_a if set, else the CT primary rating
+// (the CT is sized to the motor FLC). k is the overload / service factor.
+export function thermalCurvePoints(
+  relay: RelayParams,
+  ct: CtParams | null,
+  maxCurrentA: number,
+  tMax = 100,
+  tMin = 0.01,
+): CurvePoint[] {
+  if (!(relay.thermal_enabled ?? false)) return [];
+  const baseSetting = relay.thermal_base_a ?? 0;
+  const ib = baseSetting > 0 ? baseSetting : ct ? ct.primary_a : FALLBACK_CT_PRIMARY_A;
+  const k = relay.thermal_k ?? 1.05;
+  const pickup = k * ib; // continuous-overload limit (asymptote)
+  if (pickup <= 0) return [];
+
+  const isGE = relay.relay_model === "GE-869";
+  const tauS = (relay.thermal_tau_min ?? 15) * 60;
+  const cm = relay.thermal_curve_mult ?? 4;
+  if (!isGE && tauS <= 0) return [];
+
+  const points: CurvePoint[] = [];
+  const startA = pickup * 1.02; // just above the continuous limit
+  const endA = Math.max(maxCurrentA, startA * 1.1);
+  const steps = 120;
+  const logStart = Math.log10(startA);
+  const logEnd = Math.log10(endA);
+  for (let s = 0; s <= steps; s++) {
+    const i = Math.pow(10, logStart + ((logEnd - logStart) * s) / steps);
+    const t = isGE
+      ? geStandardTripTime(i / ib, cm) // GE Cutoff: multiple of FLA (= Ib)
+      : tauS * Math.log((i * i) / (i * i - pickup * pickup));
+    if (!isFinite(t)) continue;
+    if (t > tMax) continue; // off the top near the asymptote
+    if (t < tMin) break; // bottomed out
+    points.push({ i, t });
+  }
+  return points;
 }
 
 // Approximate gG fuse total-clearing time as an inverse band. This is a

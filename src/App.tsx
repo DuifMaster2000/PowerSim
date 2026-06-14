@@ -8,6 +8,7 @@ import { Canvas } from "./components/Canvas";
 import { PropertiesPanel } from "./components/PropertiesPanel";
 import { ResultsPanel } from "./components/ResultsPanel";
 import { GlossaryDrawer } from "./components/GlossaryDrawer";
+import { ThermalModeler } from "./components/ThermalModeler";
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
       </div>
       <PropertiesPanel />
       <GlossaryDrawer />
+      <ThermalModeler />
     </div>
   );
 }

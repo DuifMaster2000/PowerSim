@@ -85,17 +85,22 @@ export interface FuseParams {
 // definite-time option. Each maps to (K, α) constants in solver/idmt.ts.
 // "ABB-RI" is ABB's RI inverse (Relion family) for grading against legacy
 // ABB electromechanical relays — available only on ABB relay models.
+// "IEEE-*" are the IEEE C37.112 inverse curves (A,B,p constants) used by GE
+// and other North-American relays — a different equation from the IEC family.
 export type IdmtCurve =
   | "IEC-SI"   // Standard Inverse
   | "IEC-VI"   // Very Inverse
   | "IEC-EI"   // Extremely Inverse
   | "IEC-LTI"  // Long-Time Inverse
   | "ABB-RI"   // RI Inverse (ABB Relion)
+  | "IEEE-MI"  // IEEE Moderately Inverse
+  | "IEEE-VI"  // IEEE Very Inverse
+  | "IEEE-EI"  // IEEE Extremely Inverse
   | "DT";      // Definite Time
 
 // Relay hardware model: constrains the setting ranges and curve set in the
 // properties panel to what the real device accepts.
-export type RelayModel = "generic" | "ABB-REM615";
+export type RelayModel = "generic" | "ABB-REM615" | "GE-869";
 
 export interface RelayParams {
   relay_model: RelayModel;
@@ -115,6 +120,13 @@ export interface RelayParams {
   stage3_enabled: boolean;
   stage3_pickup: number;    // ×In, 1.00–40.00
   stage3_time_s: number;    // ≥ 0.02 s
+  // Thermal overload element (49T, MPTTR thermal image). Long-time inverse
+  // curve modelling motor winding heating. Multi-stage models only.
+  thermal_enabled: boolean;
+  thermal_tau_min: number;  // thermal time constant τ [minutes] — IEC replica (ABB)
+  thermal_k: number;        // overload / service factor (×base current allowed continuously)
+  thermal_base_a: number;   // base/full-load current Ib [A]; 0 = auto (use the CT primary rating)
+  thermal_curve_mult: number; // GE standard-overload curve multiplier (t = CM·87.4/(m²−1))
   // The connection (conductor) whose CT this relay measures. Picked from a
   // dropdown of CT-equipped wires in the relay's properties panel. null when
   // the relay has no CT assigned yet (surfaces a warning).

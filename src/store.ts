@@ -227,6 +227,11 @@ interface State {
   explainMode: boolean;
   glossaryOpen: boolean;
 
+  // GE 869 thermal scenario modeler (a self-contained sandbox window).
+  // View-only: not part of the project file or undo history.
+  thermalModelerOpen: boolean;
+  thermalModelerSeed: { fla: number; ol: number; tdm: number } | null;
+
   // Animation player cursor for the load-flow iteration history.
   // Reset to 0 on every fresh run and whenever the network mutates.
   animationIter: number;
@@ -280,6 +285,8 @@ interface State {
   setViewport: (v: { x: number; y: number; zoom: number }) => void;
   setExplainMode: (v: boolean) => void;
   setGlossaryOpen: (v: boolean) => void;
+  openThermalModeler: (seed: { fla: number; ol: number; tdm: number }) => void;
+  closeThermalModeler: () => void;
   setAnimationIter: (i: number) => void;
   setResultsTab: (v: "results" | "grading") => void;
   toggleGradingComponent: (id: string) => void;
@@ -374,6 +381,8 @@ export const useStore = create<State>((set, get) => ({
   ...newProjectState(),
   explainMode: readExplainModePref(),
   glossaryOpen: false,
+  thermalModelerOpen: false,
+  thermalModelerSeed: null,
   animationIter: 0,
   resultsTab: "results",
 
@@ -567,6 +576,8 @@ export const useStore = create<State>((set, get) => ({
     set({ explainMode: v });
   },
   setGlossaryOpen: (v) => set({ glossaryOpen: v }),
+  openThermalModeler: (seed) => set({ thermalModelerOpen: true, thermalModelerSeed: seed }),
+  closeThermalModeler: () => set({ thermalModelerOpen: false }),
   setAnimationIter: (i) => set({ animationIter: i }),
   setResultsTab: (v) => set({ resultsTab: v }),
   toggleGradingComponent: (id) =>

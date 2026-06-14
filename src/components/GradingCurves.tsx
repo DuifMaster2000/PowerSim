@@ -21,6 +21,7 @@ import {
   idmtOperateTime,
   primaryPickupA,
   relayHighestPickupA,
+  thermalCurvePoints,
   motorStartCurvePoints,
   cableDamageCurvePoints,
   transformerDamageCurvePoints,
@@ -38,6 +39,7 @@ const DASH: Record<string, string | undefined> = {
   motor: "2 3",
   cable: "10 4",
   transformer: "1 3",
+  thermal: "6 2 1 2",
 };
 
 function downloadCsv(filename: string, rows: string[][]) {
@@ -263,6 +265,20 @@ export function GradingCurves() {
         points: pts,
         factor: f,
       });
+      // Thermal overload element (49) — a separate long-time curve.
+      if (rp.thermal_enabled ?? false) {
+        const tpts = thermalCurvePoints(rp, links.ct, sampleMax, tMax, tMin);
+        if (tpts.length > 0) {
+          curves.push({
+            id: `${c.id}-thermal`,
+            label: `${c.label} · thermal 49 (τ${rp.thermal_tau_min ?? 15}m)`,
+            color: e.color,
+            dash: DASH.thermal,
+            points: tpts,
+            factor: f,
+          });
+        }
+      }
     } else if (e.kind === "fuse") {
       const pts = fuseTccPoints(c.parameters as FuseParams, sampleMax, tMax, tMin);
       if (pts.length === 0) continue;

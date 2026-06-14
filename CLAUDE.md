@@ -261,6 +261,46 @@ Curves across a transformer are at different voltages, so their currents aren't 
 - **Tables stay in actual amps** (physically honest); only the chart is referred. A caption + CSV header note state the reference. Devices whose kV can't be resolved are plotted unreferred with a warning note.
 - Dropdown options are the distinct voltage levels present in the network; axis label updates to "referred to X kV".
 
+### v0.13 — Thermal overload element (49) on the REM615
+
+Adds the motor thermal-overload protection function, completing the motor-protection coordination picture (start curve ↓ thermal ↓ damage limits).
+
+- `RelayParams` gains `thermal_enabled` / `thermal_tau_min` (τ, minutes) / `thermal_k` (continuous-overload factor); multi-stage models only, disabled by default, legacy `??` fallbacks. Switching to a 1-stage model force-disables it (alongside stages 2/3).
+- `thermalCurvePoints(relay, ct, …)` in `idmt.ts` (pure): IEC 60255-149 thermal replica, cold start (θ_prev = 0) → `t = τ·ln(I² / (I² − (k·Ib)²))`. Base current `Ib` = `thermal_base_a` when > 0, else the CT primary rating (`thermal_base_a = 0` is "auto", the default; the CT is sized to motor FLC). Asymptotes to ∞ at `k·Ib`, falls steeply at high current.
+- `FieldDef.hint` renders a small muted note under a field (used for the "0 = auto (CT primary)" base-current hint).
+- Plotted as a **separate** curve (own dash `6 2 1 2`, label `· thermal 49 (τNm)`) in the relay's colour — not folded into the overcurrent composite or the fault-current operate-time markers (thermal is an overload, not a fault, function). Referral-aware via the curve `factor`.
+- PropertiesPanel: thermal section under the stages on multi-stage models; τ/k shown only when enabled. Verified the curve sits above a 6×FLC / 8 s motor start (28 s trip at locked rotor) while still protecting sustained overloads.
+
+---
+
+### v0.14 — GE Multilin 869 relay model (IEEE curves + GE thermal)
+
+Second hardware relay model, chosen to contrast the ABB's IEC math.
+
+- `RelayModel` gains `"GE-869"`. Spec in `RELAY_MODELS`: pickup 0.05–20 ×In, time dial 0.05–20, DT 0–600 s, 3 stages. Curve set = **IEEE** (MI/VI/EI) + IEC (SI/VI/EI) + DT.
+- New `IdmtCurve` values `"IEEE-MI" | "IEEE-VI" | "IEEE-EI"` — IEEE C37.112: `t = TDM·(A/(mᵖ − 1) + B)`. `IEEE_CONSTANTS` in `idmt.ts` (MI 0.0515/0.114/0.02, VI 19.61/0.491/2, EI 28.2/0.1217/2). `IEC_CONSTANTS` retyped to the four IEC keys only; `stageOperateTime` dispatches IEEE alongside ABB-RI / IEC / DT.
+- **GE thermal characteristic**: `thermalCurvePoints` dispatches on `relay_model`. GE uses the "Standard" motor-overload curve `t = TDM·87.4 / min(m² − 1, 63)`, m = I/(OL·Ib), via `RelayParams.thermal_curve_mult` (TD multiplier, default 4, range 1–25); ABB keeps the IEC replica (`τ·ln`). Shared `thermal_k` = overload factor (OL), `thermal_base_a` = FLA/CT-primary. **Verified against the 869 manual's Standard Curve TD Multiplier table** — the `87.4/(m²−1)` form and OL·FLA pickup match every table point; the `min(…, 63)` cap reproduces the manual's constant minimum-time floor (1.39 s·TDM) at m ≥ 8 (locked-rotor region).
+- PropertiesPanel: `applyRelayModel` relabels fields in GE's ANSI notation (51P / 50P-1 / 50P-2 / 49, TD multiplier, overload factor OL, motor FLA) via `GE_LABELS`. `relayFieldVisible` shows `thermal_tau_min` on ABB but `thermal_curve_mult` on GE. IEEE curve constants verified against hand calcs.
+- **Not modelled** (beyond a static TCC curve): the 869's IEC/FlexCurve overload options, hot/cold biasing, cooling time constants, unbalance & RTD biasing, voltage-dependent curve. Only the default "Standard" overload curve is plotted.
+
+### v0.15 — GE 869 dynamic thermal model (49) engine
+
+A time-domain Thermal Capacity Used (TCU) state model of the GE 869 thermal element, separate from the steady-state TCC curve. Pure engine + validation harness; **no UI yet** (a dedicated relay-settings window is the next step).
+
+- `src/protection/relay869Thermal.ts` (pure, no React/store/solver): `Relay869ThermalModel` class — TCU register (0–100+%), `step(input)` integrating heating/cooling per time step, state machine for trip/latch/alarm/block, RTD bias, power-loss memory, and an experimental (unvalidated) voltage-dependent acceleration module behind a flag. All constants cited to the 869 manual §9.2.1.2; ambiguities marked `ASSUMPTION:`.
+  - Eq 1 unbalance biasing `Ieq = √(Iavg²·(1 + K·(I2/I1)²))`; Eq 2 Standard curve (exact GE coefficients `2.2116623 / (0.02530337·(m−1)² + 0.05054758·(m−1))`, Cutoff/Shift, locked-rotor floor at m=8) **and** IEC 255-8 hot/cold with τ1/τ2 region selection; Eq 3 `ΔTCU = 100·dt/t_trip`; Eq 4 exponential cooling to a load-dependent floor (running) or zero (stopped).
+- Exact Standard-curve coefficients are the single source of truth: `geStandardTripTime()` is exported and now also drives the grading chart's GE thermal curve in `idmt.ts` (replacing the earlier `87.4/(m²−1)` approximation).
+- `src/protection/relay869Thermal.harness.ts` (`npx tsx …`): validates t_trip at 2/3/5×FLA against the manual table (29.16 / 10.93 / 3.64 s, exact), plus scenarios — steady-overload trip time, cold-start settling at the hot/cold floor, running-vs-stopped cooling constants, unbalance biasing (K=8), and power-loss memory.
+
+### v0.16 — Thermal scenario modeler (UI for the 869 dynamic model)
+
+A modal sandbox that drives `Relay869ThermalModel` so you can *see* the dynamic settings work.
+
+- `src/components/ThermalModeler.tsx`: a `.modal` with (1) a thermal-settings grid (curve type Standard/IEC, OL, FLA, TDM or k/τ1/τ2, cooling τ run/stop, hot/cold ratio, unbalance K, trip function, alarm, RTD bias), (2) an editable **scenario** table of phases (×FLA, duration, motor status, unbalance I2/I1 %, optional RTD °C), and (3) a live hand-built SVG chart of **TCU vs time** with a current overlay (right axis), 100% trip + alarm lines, phase bands, and a trip marker. Recomputed live via `useMemo` (no Run button).
+- Store: view-only `thermalModelerOpen` + `thermalModelerSeed` + `openThermalModeler(seed)` / `closeThermalModeler`. Opened from a **GE-869 relay's** properties panel ("Open thermal scenario modeler"), seeded with the relay's FLA (thermal base / CT primary), OL and TDM. Default TD multiplier is 4 (the GE default of 1.0 nuisance-trips a 6×FLA start).
+- Not persisted to the project file; purely exploratory. RTD bias is wired (per-phase temperature column); the voltage-dependent module is not exposed (experimental).
+- Polish: a self-contained always-on `InfoTip` (fixed-positioned, not clipped by the modal scroll) gives a plain-English `HELP[...]` tooltip on every setting + scenario column; a colour **legend** under the chart (TCU / current / trip / alarm); phase labels are width-culled so they never overlap (wide phases labelled, slivers named only in the table).
+
 ---
 
 ## Known limitations / v0.5 candidates

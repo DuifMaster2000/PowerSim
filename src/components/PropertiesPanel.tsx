@@ -128,6 +128,7 @@ interface FieldDef {
   step?: number;
   min?: number;
   max?: number;
+  hint?: string; // small muted note rendered under the field
 }
 
 const FIELDS: { [K in ComponentType]: FieldDef[] } = {
@@ -231,25 +232,54 @@ const FIELDS: { [K in ComponentType]: FieldDef[] } = {
     { key: "stage3_enabled", label: "Inst. stage (3I>>>)", type: "boolean" },
     { key: "stage3_pickup", label: "3I>>> pickup", unit: "×In", type: "number", step: 0.5, min: 1, max: 40 },
     { key: "stage3_time_s", label: "3I>>> time", unit: "s", type: "number", step: 0.01, min: 0.02, max: 200 },
+    // Thermal overload element (49) — base current taken from the CT rating.
+    { key: "thermal_enabled", label: "Thermal (49)", type: "boolean" },
+    { key: "thermal_tau_min", label: "Time constant τ", unit: "min", type: "number", step: 1, min: 1, max: 600 },
+    { key: "thermal_curve_mult", label: "TD multiplier", type: "number", step: 0.5, min: 1, max: 25 },
+    { key: "thermal_k", label: "Overload factor k", type: "number", step: 0.05, min: 1, max: 1.5 },
+    { key: "thermal_base_a", label: "Base current Ib", unit: "A", type: "number", step: 10, min: 0, hint: "0 = auto (CT primary)" },
   ],
 };
 
-// Constrain the relay fields to what the selected hardware model accepts.
+// GE uses ANSI device-number notation (51P/50P/49) rather than ABB's 3I>.
+const GE_LABELS: Record<string, string> = {
+  curve: "51P curve",
+  plug_setting: "51P pickup",
+  time_multiplier: "51P time dial (TDM)",
+  definite_time_s: "51P time",
+  stage2_enabled: "High set (50P-1)",
+  stage2_curve: "50P-1 curve",
+  stage2_pickup: "50P-1 pickup",
+  stage2_tms: "50P-1 dial",
+  stage2_time_s: "50P-1 time",
+  stage3_enabled: "Instantaneous (50P-2)",
+  stage3_pickup: "50P-2 pickup",
+  stage3_time_s: "50P-2 time",
+  thermal_enabled: "Thermal O/L (49)",
+  thermal_curve_mult: "TD multiplier",
+  thermal_k: "Overload factor (OL)",
+  thermal_base_a: "Motor FLA",
+};
+
+// Constrain the relay fields to what the selected hardware model accepts,
+// and relabel them in the device's own notation.
 function applyRelayModel(fields: FieldDef[], model: RelayModel): FieldDef[] {
   const spec = RELAY_MODELS[model] ?? RELAY_MODELS.generic;
+  const labels = model === "GE-869" ? GE_LABELS : {};
   return fields.map((f) => {
+    const wl = { ...f, label: labels[f.key] ?? f.label };
     switch (f.key) {
       case "curve":
       case "stage2_curve":
-        return { ...f, options: spec.curves, optionLabels: spec.curves.map((c) => CURVE_LABELS[c]) };
+        return { ...wl, options: spec.curves, optionLabels: spec.curves.map((c) => CURVE_LABELS[c]) };
       case "plug_setting":
-        return { ...f, min: spec.plugMin, max: spec.plugMax, step: spec.plugStep };
+        return { ...wl, min: spec.plugMin, max: spec.plugMax, step: spec.plugStep };
       case "time_multiplier":
-        return { ...f, min: spec.tmsMin, max: spec.tmsMax };
+        return { ...wl, min: spec.tmsMin, max: spec.tmsMax };
       case "definite_time_s":
-        return { ...f, min: spec.dtMin, max: spec.dtMax };
+        return { ...wl, min: spec.dtMin, max: spec.dtMax };
       default:
-        return f;
+        return wl;
     }
   });
 }
@@ -267,6 +297,12 @@ function relayFieldVisible(f: FieldDef, params: Record<string, unknown>): boolea
   if (f.key === "stage2_tms" && params.stage2_curve === "DT") return false;
   if (f.key === "stage2_time_s" && params.stage2_curve !== "DT") return false;
   if (["stage3_pickup", "stage3_time_s"].includes(f.key) && !params.stage3_enabled) return false;
+  const isGE = model === "GE-869";
+  if (f.key.startsWith("thermal") && !multiStage) return false;
+  if (["thermal_tau_min", "thermal_curve_mult", "thermal_k", "thermal_base_a"].includes(f.key) && !params.thermal_enabled) return false;
+  // IEC thermal replica (τ) on ABB; GE standard-overload curve multiplier on GE.
+  if (f.key === "thermal_tau_min" && isGE) return false;
+  if (f.key === "thermal_curve_mult" && !isGE) return false;
   return true;
 }
 
@@ -449,7 +485,7 @@ export function PropertiesPanel() {
                         time_multiplier: clamp(params.time_multiplier as number, spec.tmsMin, spec.tmsMax),
                         definite_time_s: clamp(params.definite_time_s as number, spec.dtMin, spec.dtMax),
                         ...(spec.curves.includes(params.curve as IdmtCurve) ? {} : { curve: "IEC-SI" as IdmtCurve }),
-                        ...(spec.stages === 1 ? { stage2_enabled: false, stage3_enabled: false } : {}),
+                        ...(spec.stages === 1 ? { stage2_enabled: false, stage3_enabled: false, thermal_enabled: false } : {}),
                         ...(spec.curves.includes((params.stage2_curve as IdmtCurve) ?? "DT") ? {} : { stage2_curve: "DT" as IdmtCurve }),
                       } as any);
                     } else {
@@ -502,11 +538,17 @@ export function PropertiesPanel() {
                 {fieldErrors[f.key]}
               </span>
             )}
+            {!fieldErrors[f.key] && f.hint && (
+              <span style={{ color: "var(--text-muted)", fontSize: 10, paddingLeft: 2 }}>
+                {f.hint}
+              </span>
+            )}
           </div>
         ))}
       </div>
 
       {comp.type === "relay" && <RelayLinksSection relayId={comp.id} />}
+      {comp.type === "relay" && (params.relay_model as string) === "GE-869" && <Ge869ModelerButton relayId={comp.id} />}
 
       <div className="props-section">
         <button className="danger" onClick={() => removeComponent(comp.id)}>
@@ -514,6 +556,34 @@ export function PropertiesPanel() {
         </button>
       </div>
     </aside>
+  );
+}
+
+// Opens the GE 869 thermal scenario modeler, seeded from this relay's FLA
+// (thermal base / CT primary), overload factor and TD multiplier.
+function Ge869ModelerButton({ relayId }: { relayId: string }) {
+  const components = useStore((s) => s.components);
+  const getRelayLinks = useStore((s) => s.getRelayLinks);
+  const openThermalModeler = useStore((s) => s.openThermalModeler);
+  const relay = components.find((c) => c.id === relayId);
+  if (!relay) return null;
+  const p = relay.parameters as RelayParams;
+  const links = getRelayLinks(relayId);
+  const fla = (p.thermal_base_a ?? 0) > 0 ? p.thermal_base_a : links.ct?.primary_a ?? 100;
+  return (
+    <div className="props-section">
+      <h4>Thermal model (49)</h4>
+      <button
+        style={{ width: "100%" }}
+        onClick={() => openThermalModeler({ fla, ol: p.thermal_k ?? 1.05, tdm: p.thermal_curve_mult ?? 1 })}
+      >
+        Open thermal scenario modeler →
+      </button>
+      <p style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4, margin: "4px 2px 0" }}>
+        Simulate Thermal Capacity Used (TCU) over a current-vs-time scenario — the dynamic
+        side of the relay (cooling, hot/cold, unbalance) that a static curve can't show.
+      </p>
+    </div>
   );
 }
 
