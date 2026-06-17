@@ -353,6 +353,19 @@ The short-circuit solver now applies the IEC 60909 transformer correction factor
 
 ---
 
+### v0.21 — Short-circuit methodology window
+
+A "show your working" view for the short-circuit study — built to reassure reviewers/commercial users that the IEC 60909 answer is traceable, step by step, with the run's actual numbers.
+
+- **Button**: the short-circuit results header gains a **Methodology** button (next to Export CSV) → opens a document-style modal.
+- **Data (solver → UI, layering preserved)**: `runShortCircuit` now attaches a `ShortCircuitDerivation` to `ShortCircuitResult` — *numbers only*: per-unit base + base current, each source's Z (from S″_k and X/R) + contribution, every transformer's `x_T` and the `K_T` actually used, the Thévenin `Z_kk` (re/im/|Z|/ X-R) at the fault bus, `I″k = c/|Z_kk|` → kA, and `κ` + `i_p`. The UI component wraps these in prose + equations, so the solver stays presentation-free.
+- **Component**: `src/components/ShortCircuitMethodology.tsx` (modal, mounted in `App.tsx`). Sections 1–7: per-unit base → source Z → transformer Z & K_T → Y-bus/Z-bus reduction → `I″k` → `i_p` → **assumptions & limitations** (bolted 3-phase only, equivalent voltage source, K_T applied / Kg–Ks not, radial contribution approximation, "educational tool, not a verified compliance study").
+- **Print / PDF**: a Print button + `@media print` rules render just the methodology page on white for saving to PDF / records.
+- **Store**: view-only `methodologyOpen` + `openMethodology` / `closeMethodology` (mirrors `glossaryOpen`); Esc / backdrop close.
+- Scope: **short-circuit only** for now — load flow / motor start / arc flash could follow the same derivation pattern later.
+
+---
+
 ## Known limitations / v0.5 candidates
 
 These are the documented gaps, roughly prioritised:

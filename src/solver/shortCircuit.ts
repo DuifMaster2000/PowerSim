@@ -7,9 +7,16 @@
 // - Voltage factor c: 1.10 for maximum fault current, 1.05 for minimum
 // =====================================================================
 
-import type { ShortCircuitResult, ShortCircuitContribution, ShortCircuitBranchFlow } from "../types";
+import type {
+  ShortCircuitResult,
+  ShortCircuitContribution,
+  ShortCircuitBranchFlow,
+  ShortCircuitDerivation,
+  ScSourceTerm,
+  ScTransformerTerm,
+} from "../types";
 import type { NetworkModel } from "./network";
-import { buildYBus } from "./network";
+import { buildYBus, transformerKtFactor } from "./network";
 import { invertComplexMatrix, type Complex, cAbs } from "./math";
 
 export function runShortCircuit(
@@ -188,6 +195,45 @@ export function runShortCircuit(
     });
   }
 
+  // ---- Methodology derivation: capture the intermediate values so the UI can
+  // show exactly how the answer was reached (numbers only — no prose here). ----
+  const sourceTerms: ScSourceTerm[] = net.sources.map((src) => ({
+    label: src.label,
+    shortCircuitMva: src.shortCircuitMva,
+    xrRatio: src.xrRatio,
+    rPu: src.zSrcPu.re,
+    xPu: src.zSrcPu.im,
+    zMagPu: cAbs(src.zSrcPu),
+    contributionKa: contributions.find((c) => c.sourceId === src.componentId)?.currentKa ?? 0,
+  }));
+  const transformerTerms: ScTransformerTerm[] = net.branches
+    .filter((b) => b.componentType === "transformer")
+    .map((b) => ({
+      label: b.label,
+      ratedMva: b.ratedMva ?? 0,
+      xTpu: b.xTpu ?? 0,
+      ktFactor: transformerKtFactor(b.xTpu ?? 0, cFactor),
+    }));
+
+  const derivation: ShortCircuitDerivation = {
+    standard: "IEC 60909-0 (simplified, 3-phase symmetrical)",
+    faultBusLabel: faultBus.label,
+    cFactor,
+    baseMva: net.baseMva,
+    baseKv: faultBus.baseKv,
+    baseCurrentA: Ibase,
+    sources: sourceTerms,
+    transformers: transformerTerms,
+    zThevRePu: zkk_re,
+    zThevImPu: zkk_im,
+    zThevMagPu: zkk_mag,
+    xrAtFault,
+    ikPu: Ipu,
+    ikSymKa,
+    kappa,
+    ipPeakKa,
+  };
+
   return {
     faultBusId: faultBus.id,
     faultBusLabel: faultBus.label,
@@ -195,5 +241,6 @@ export function runShortCircuit(
     ipPeakKa,
     contributions,
     branchFlows,
+    derivation,
   };
 }

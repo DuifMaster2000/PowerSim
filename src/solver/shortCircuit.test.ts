@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { buildNetwork } from "./network";
+import { buildNetwork, transformerKtFactor } from "./network";
 import { runShortCircuit } from "./shortCircuit";
 import { EXAMPLES } from "../examples";
 import type { ProjectFile } from "../types";
@@ -77,5 +77,39 @@ describe("short circuit — fault-level baselines", () => {
   test("full plant — all the way down to 525 V", () => {
     expect(ik("full-plant-132-525", "BB-132")).toBeCloseTo(16.91, 2); // source bus — no K_T
     expect(ik("full-plant-132-525", "BB-525V")).toBeCloseTo(34.414, 2);
+  });
+});
+
+describe("short circuit — methodology derivation", () => {
+  const scAt = (id: string, busLabel: string, c = 1.1) => {
+    const net = buildNetwork(file(id));
+    const idx = net.buses.findIndex((b) => b.label === busLabel);
+    return runShortCircuit(net, idx, c);
+  };
+
+  test("attaches a self-consistent derivation", () => {
+    const r = scAt("full-plant-132-525", "BB-525V", 1.1);
+    const d = r.derivation!;
+    expect(d).toBeDefined();
+    expect(d.cFactor).toBe(1.1);
+    expect(d.ikSymKa).toBeCloseTo(r.ikSymKa, 9);
+    expect(d.ipPeakKa).toBeCloseTo(r.ipPeakKa, 9);
+    // I"k(pu) = c / |Z_kk|, and I"k(kA) = I"k(pu)·I_base/1000.
+    expect(d.ikPu).toBeCloseTo(d.cFactor / d.zThevMagPu, 9);
+    expect(d.ikSymKa).toBeCloseTo((d.ikPu * d.baseCurrentA) / 1000, 6);
+  });
+
+  test("lists every transformer with the K_T actually used", () => {
+    const d = scAt("full-plant-132-525", "BB-525V", 1.1).derivation!;
+    expect(d.transformers).toHaveLength(4); // 132/33, 33/11, 11/6.6, 11/0.525
+    for (const t of d.transformers) {
+      expect(t.ktFactor).toBeCloseTo(transformerKtFactor(t.xTpu, 1.1), 9);
+    }
+  });
+
+  test("a transformer-free network lists sources only", () => {
+    const d = scAt("ring-main-33", "BUS-A", 1.1).derivation!;
+    expect(d.transformers).toHaveLength(0);
+    expect(d.sources).toHaveLength(2);
   });
 });

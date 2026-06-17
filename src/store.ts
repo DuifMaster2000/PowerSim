@@ -235,6 +235,10 @@ interface State {
   explainMode: boolean;
   glossaryOpen: boolean;
 
+  // Short-circuit methodology window (how the IEC 60909 answer was derived).
+  // View-only: not part of the project file or undo history.
+  methodologyOpen: boolean;
+
   // GE 869 thermal scenario modeler (a self-contained sandbox window).
   // View-only: not part of the project file or undo history.
   thermalModelerOpen: boolean;
@@ -294,6 +298,8 @@ interface State {
   setViewport: (v: { x: number; y: number; zoom: number }) => void;
   setExplainMode: (v: boolean) => void;
   setGlossaryOpen: (v: boolean) => void;
+  openMethodology: () => void;
+  closeMethodology: () => void;
   openThermalModeler: (seed: { fla: number; ol: number; tdm: number }) => void;
   closeThermalModeler: () => void;
   setAnimationIter: (i: number) => void;
@@ -393,6 +399,7 @@ export const useStore = create<State>((set, get) => ({
   ...newProjectState(),
   explainMode: readExplainModePref(),
   glossaryOpen: false,
+  methodologyOpen: false,
   thermalModelerOpen: false,
   thermalModelerSeed: null,
   animationIter: 0,
@@ -595,6 +602,8 @@ export const useStore = create<State>((set, get) => ({
     set({ explainMode: v });
   },
   setGlossaryOpen: (v) => set({ glossaryOpen: v }),
+  openMethodology: () => set({ methodologyOpen: true }),
+  closeMethodology: () => set({ methodologyOpen: false }),
   openThermalModeler: (seed) => set({ thermalModelerOpen: true, thermalModelerSeed: seed }),
   closeThermalModeler: () => set({ thermalModelerOpen: false }),
   setAnimationIter: (i) => set({ animationIter: i }),
