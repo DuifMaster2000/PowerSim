@@ -854,6 +854,31 @@ table.results-table td:first-child, table.results-table th:first-child {
   transform: translate(-50%, -50%);
 }
 
+/* Relay: keep protection/control devices compact so the SLD stays visually
+   focused on primary equipment. */
+.node.relay {
+  min-width: 42px;
+  padding: 3px 5px;
+  gap: 1px;
+  border-radius: 3px;
+}
+.node.relay .node-symbol {
+  width: 24px;
+  height: 24px;
+}
+.node.relay .node-label {
+  max-width: 46px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 9px;
+  line-height: 1.05;
+}
+.node.relay .node-label-edit {
+  width: 48px;
+  font-size: 9px;
+  padding: 0 2px;
+}
+
 .node.switch.open { opacity: 0.5; }
 .node.switch .node-symbol { cursor: pointer; }
 
