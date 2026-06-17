@@ -847,6 +847,12 @@ table.results-table td:first-child, table.results-table th:first-child {
   border-radius: 2px;
   transition: box-shadow 0.15s ease;
 }
+.node.busbar .react-flow__handle-top,
+.node.busbar .react-flow__handle-bottom {
+  top: 9px;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
 
 .node.switch.open { opacity: 0.5; }
 .node.switch .node-symbol { cursor: pointer; }
