@@ -22,6 +22,7 @@ npm run dev        # starts Vite on http://localhost:5000
 ```
 
 Type-check without building: `npx tsc --noEmit`
+Run the test suite: `npm test` (Vitest, runs once) — or `npm run test:watch`
 
 ---
 
@@ -323,6 +324,24 @@ Adds the 2018 edition of arc flash alongside the 2002 model, validated against t
 
 ---
 
+### v0.19 — Test suite (Vitest) + refreshed example networks
+
+First automated regression net for the pure layers, plus example networks rebuilt at real workplace voltages.
+
+- **Vitest** added (`npm test` runs once, `npm run test:watch` for the loop). `vitest.config.ts` runs a Node environment over `src/**/*.test.ts` — the solver / `idmt` / `arcFlash` / `protection` layers are React-free, so no jsdom is needed. 78 tests across 9 files; `npx tsc --noEmit` covers the test files too.
+- **Example-network baselines** (the core of this pass): every bundled example is loaded, solved and checked — load-flow convergence + a flat-1.0 pu slack + per-bus voltage baselines (±1e-3 pu); IEC 60909 fault levels (the source-bus values double as exact hand-checks, `I_k" = c·S_sc/(√3·kV)`); and DOL motor-start terminal voltage / dip, including the constant-impedance `I ≈ LRC·FLC·V` relationship. Baselines were captured from the current solver and locked in, so any future change that shifts a result is flagged.
+- **Pure-function tests**: complex arithmetic + Gaussian / complex-matrix inversion (`math.ts`); IDMT / IEEE / ABB-RI / DT operate times + multi-stage "fastest stage wins" (`idmt.ts`); `effectiveStartingCurrentRatio`; base-kV propagation through the transformer chain.
+- **Standards regression**: the two ad-hoc `*.harness.ts` scripts are now real tests — GE 869 Standard curve (29.16 / 10.93 / 3.64 s at TDM 1) and IEEE 1584-2018 Annex D.1 (CF 1.284, Iarc 12.979 kA, E 12.152 J/cm², AFB 1606 mm). The harness files remain for interactive runs.
+- **Refreshed examples** (`src/examples/`): the five originals predated cables / breakers / CTs, so they're replaced with workplace-voltage networks (132 / 33 / 11 / 6.6 / 0.525 kV), each with cables, breakers and CTs (relays where protection is the point):
+  1. *Grid intake — 132/33 kV*: radial hello-world with an incomer breaker, CT and relay.
+  2. *Primary substation — 33/11 kV*: graded relay-feeder + fuse-feeder for the grading study.
+  3. *MV motor feeder — 11/6.6 kV*: 2.5 MW DOL motor with a GE-869 relay (motor-start + thermal).
+  4. *Ring main — 33 kV + embedded gen*: closed ring with a PV-bus generator; meshed → multi-iteration (animation).
+  5. *Full plant — 132 kV to 525 V*: ≈20 components spanning all five levels; exercises every study.
+- Addresses backlog item #8.
+
+---
+
 ## Known limitations / v0.5 candidates
 
 These are the documented gaps, roughly prioritised:
@@ -336,7 +355,7 @@ These are the documented gaps, roughly prioritised:
 | 5 | Results | **Comparison mode** | Run, tweak, re-run — keep previous results alongside new ones |
 | 6 | Export | **Export diagram as SVG/PNG** | Canvas screenshot |
 | 7 | Symbols | **More IEC symbols** | Generator (distinct from grid source), capacitor bank, harmonic filter |
-| 8 | Architecture | **Unit tests for solver** | `solver/` is React-free — easy to add Vitest tests; none exist yet |
+| 8 | Architecture | **Unit tests for solver** | ✅ Done (v0.19) — Vitest suite (78 tests): solver + idmt + arc flash + per-example baselines. More coverage always welcome. |
 | 9 | UI | **Duplicate with connections** | Current `duplicateComponent` clones the component only; could optionally clone its incident wires |
 | 10 | Motor start | **Acceleration time / torque-speed curve** | v0.4 models the worst-instant inrush only; no run-up integration or motor-vs-load torque modelling |
 | 11 | Motor start | **Simultaneous starting of multiple motors** | One motor at a time; group-start studies need manual scenario runs |
