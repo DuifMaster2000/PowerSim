@@ -80,6 +80,28 @@ export function BusbarEdge(props: EdgeProps) {
     };
   };
 
+  // Y for a CT badge on a wire that lands on a busbar. The wire snaps to the
+  // conductor strip near the top of the bus card, so the raw edge midpoint can
+  // sit on top of the card when the other device is close. Slide the badge
+  // along the drop line until it clears the card (and stays off the device).
+  const busEdgeBadgeY = (busCompId: string, busY: number, compY: number): number => {
+    const bus = components.find((c) => c.id === busCompId);
+    if (!bus || bus.type !== "busbar") return (busY + compY) / 2;
+    const node = busCompId === source ? srcNode : tgtNode;
+    const height = node?.measured?.height ?? DEFAULT_BUSBAR_HEIGHT;
+    const below = compY >= busY;
+    const cardEdge = below ? bus.position.y + height : bus.position.y;
+    const GAP_FROM_CARD = 16; // keep the CT clear of the busbar card
+    const GAP_FROM_DEVICE = 22; // and clear of the device at the other end
+    let y = (busY + compY) / 2;
+    if (below) {
+      y = Math.min(Math.max(y, cardEdge + GAP_FROM_CARD), compY - GAP_FROM_DEVICE);
+    } else {
+      y = Math.max(Math.min(y, cardEdge - GAP_FROM_CARD), compY + GAP_FROM_DEVICE);
+    }
+    return y;
+  };
+
   if (srcComp?.type === "busbar" && tgtComp?.type !== "busbar") {
     sx = clampToBusbar(source, centerX(target, targetX));
     sy = busbarConductorY(source, sourceY);
@@ -95,7 +117,14 @@ export function BusbarEdge(props: EdgeProps) {
 
   const midX = (sx + tx) / 2;
   const midY = (sy + ty) / 2;
-  const badgeY = midY - (ed?.label ? 15 : 0);
+  // CT badge: clear of the busbar card for wires into a bus; otherwise the
+  // midpoint (nudged off a flow readout when one is shown on the same wire).
+  let badgeY = midY - (ed?.label ? 15 : 0);
+  if (srcComp?.type === "busbar" && tgtComp?.type !== "busbar") {
+    badgeY = busEdgeBadgeY(source, sy, ty);
+  } else if (tgtComp?.type === "busbar" && srcComp?.type !== "busbar") {
+    badgeY = busEdgeBadgeY(target, ty, sy);
+  }
   const edgeLabelPosition =
     srcComp?.type === "busbar" && tgtComp?.type !== "busbar"
       ? busbarOutsideLabelPosition(source, ty, sx)
