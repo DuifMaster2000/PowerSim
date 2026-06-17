@@ -230,59 +230,67 @@ export function Toolbar() {
       />
       <div className="divider" />
       <div className="toolbar-study-group" aria-label="Analysis studies">
-        <button className="primary" onClick={runLoadFlow}>
-          Load Flow
-        </button>
-        <button
-          className="primary"
-          onClick={runShortCircuit}
-          disabled={!faultBusId}
-          title={!faultBusId ? "Click a busbar first to select the fault location" : ""}
-        >
-          Short Circuit
-        </button>
-        <button
-          title="IEC 60909 voltage factor c: 1.10 = maximum fault current, 1.05 = minimum"
-          className="toolbar-chip"
-          onClick={() => setShortCircuitCFactor(shortCircuitCFactor === 1.10 ? 1.05 : 1.10)}
-        >
-          c={shortCircuitCFactor.toFixed(2)}
-        </button>
-        <button
-          className="primary"
-          onClick={runArcFlash}
-          disabled={!faultBusId}
-          title={!faultBusId ? "Click a busbar first to select the location" : "IEEE 1584 incident energy at the selected bus"}
-        >
-          Arc Flash
-        </button>
-        <button
-          title="Arc-flash standard edition: 2018 (electrode configs, enclosure correction) or 2002"
-          className="toolbar-chip"
-          onClick={() => setArcFlashMethod(arcFlashMethod === "1584-2018" ? "1584-2002" : "1584-2018")}
-        >
-          {arcFlashMethod}
-        </button>
-        <button
-          className="primary"
-          onClick={runMotorStarting}
-          disabled={!startingMotorId}
-          title={
-            startingMotorId
-              ? `Run motor-starting analysis for ${startingMotorLabel}`
-              : "Click a motor first to select it as the starting motor"
-          }
-        >
-          Motor Start
-        </button>
-        {startingMotorLabel && (
-          <span
-            title="Starting motor"
-            className="toolbar-chip"
+        <div className="toolbar-study" title="Run the steady-state load-flow study">
+          <button className="primary" onClick={runLoadFlow}>
+            Load Flow
+          </button>
+        </div>
+        <div className="toolbar-study" title="Run the IEC 60909 short-circuit study">
+          <button
+            className="primary"
+            onClick={runShortCircuit}
+            disabled={!faultBusId}
+            title={!faultBusId ? "Click a busbar first to select the fault location" : ""}
           >
-            {startingMotorLabel}
-          </span>
-        )}
+            Short Circuit
+          </button>
+          <button
+            title="IEC 60909 voltage factor c: 1.10 = maximum fault current, 1.05 = minimum"
+            className="toolbar-chip"
+            onClick={() => setShortCircuitCFactor(shortCircuitCFactor === 1.10 ? 1.05 : 1.10)}
+          >
+            c={shortCircuitCFactor.toFixed(2)}
+          </button>
+        </div>
+        <div className="toolbar-study" title="Run the IEEE 1584 arc-flash study">
+          <button
+            className="primary"
+            onClick={runArcFlash}
+            disabled={!faultBusId}
+            title={!faultBusId ? "Click a busbar first to select the location" : "IEEE 1584 incident energy at the selected bus"}
+          >
+            Arc Flash
+          </button>
+          <button
+            title="IEEE 1584 arc-flash standard edition: 2018 (electrode configs, enclosure correction) or 2002"
+            className="toolbar-chip"
+            onClick={() => setArcFlashMethod(arcFlashMethod === "1584-2018" ? "1584-2002" : "1584-2018")}
+          >
+            IEEE {arcFlashMethod}
+          </button>
+        </div>
+        <div className="toolbar-study" title="Run the motor-starting voltage-dip study">
+          <button
+            className="primary"
+            onClick={runMotorStarting}
+            disabled={!startingMotorId}
+            title={
+              startingMotorId
+                ? `Run motor-starting analysis for ${startingMotorLabel}`
+                : "Click a motor first to select it as the starting motor"
+            }
+          >
+            Motor Start
+          </button>
+          {startingMotorLabel && (
+            <span
+              title="Starting motor"
+              className="toolbar-chip"
+            >
+              {startingMotorLabel}
+            </span>
+          )}
+        </div>
       </div>
       <div className="divider" />
       <div className="toolbar-tools">
