@@ -342,13 +342,24 @@ First automated regression net for the pure layers, plus example networks rebuil
 
 ---
 
+### v0.20 — IEC 60909 transformer impedance correction (K_T)
+
+The short-circuit solver now applies the IEC 60909 transformer correction factor.
+
+- `K_T = 0.95 · c / (1 + 0.6 · x_T)`, where `x_T` is the transformer's reactance on its **own** rating. The corrected impedance `Z·K_T` (admittance `Y/K_T`) is used for the fault calculation only — **load flow and motor starting keep the true impedance**.
+- `transformerKtFactor(xTpu, cMax)` is a pure export in `solver/network.ts`; `BranchModel.xTpu` carries each transformer's own-base reactance. `buildYBus(net, { scCFactor })` applies the correction only when the short-circuit c-factor is passed — `shortCircuit.ts` passes the active c (the toolbar toggle), `loadFlow.ts` passes nothing. Generator / power-station corrections (Kg, Ks) remain out of scope.
+- Effect depends on c and x_T: `K_T < 1` for medium/high-impedance transformers (raises the downstream fault level), slightly `> 1` for low-impedance units. On the example transformers it shifts downstream fault currents by ~1–3 %; **source-bus faults — no transformer in the path — are unchanged.** Short-circuit baselines updated and dedicated K_T mechanism tests added.
+- Addresses backlog item #1.
+
+---
+
 ## Known limitations / v0.5 candidates
 
 These are the documented gaps, roughly prioritised:
 
 | # | Area | What's missing | Notes |
 |---|------|----------------|-------|
-| 1 | Solver | IEC 60909 **Kt correction factor** for transformers | K_T = c / (1 + 0.6·x_T) approx; results ~5–10% optimistic without it |
+| 1 | Solver | IEC 60909 **Kt correction factor** for transformers | ✅ Done (v0.20) — `K_T = 0.95·c/(1+0.6·x_T)` on the SC path. Generator/power-station Kg, Ks still pending. |
 | 2 | Solver | **Relative pivot tolerance** in `math.ts` Gaussian elim (line ~81) | Currently absolute `1e-14`; should scale to max element × 1e-10 |
 | 3 | Solver | **Q limits** on PV buses | PV buses currently inject unlimited Q; real sources have reactive limits |
 | 4 | Results | **Voltage band customisation** | Hard-coded 0.9/0.95/1.05/1.1 pu thresholds |

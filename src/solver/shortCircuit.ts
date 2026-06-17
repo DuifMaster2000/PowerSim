@@ -1,7 +1,9 @@
 // =====================================================================
 // IEC 60909 simplified three-phase short-circuit solver.
 // - Three-phase symmetrical bolted fault only
-// - No impedance correction factors (Kt, Kg) — documented simplification
+// - Transformer impedance correction K_T = 0.95·c/(1+0.6·x_T) is applied
+//   (short-circuit path only). Generator/power-station correction (Kg, Ks)
+//   is still omitted — documented simplification.
 // - Voltage factor c: 1.10 for maximum fault current, 1.05 for minimum
 // =====================================================================
 
@@ -20,8 +22,9 @@ export function runShortCircuit(
     throw new Error("Invalid fault bus index");
   }
 
-  // Build Y-bus with source impedances ADDED at each source's bus.
-  const { gRe, bIm } = buildYBus(net);
+  // Build Y-bus with source impedances ADDED at each source's bus. The fault
+  // path applies the IEC 60909 transformer correction K_T (load flow does not).
+  const { gRe, bIm } = buildYBus(net, { scCFactor: cFactor });
   for (const src of net.sources) {
     // Y_src = 1 / Z_src
     const r = src.zSrcPu.re;

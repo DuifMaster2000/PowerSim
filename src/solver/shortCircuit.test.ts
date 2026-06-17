@@ -54,26 +54,28 @@ describe("short circuit — exact physics on a source-only bus", () => {
   });
 });
 
-// Regression baselines (c = 1.10), captured from the solver. Source-bus values
-// are also exact hand-checks: e.g. 132 kV intake = 1.1·3500/(√3·132) = 16.84 kA.
+// Regression baselines (c = 1.10), captured from the solver with the IEC 60909
+// transformer K_T correction applied. Source-bus values have no transformer in
+// the fault path, so K_T does not touch them and they stay exact hand-checks:
+// e.g. 132 kV intake = 1.1·3500/(√3·132) = 16.84 kA.
 describe("short circuit — fault-level baselines", () => {
   test("grid intake 132/33", () => {
-    expect(ik("grid-intake-132-33", "BB-132")).toBeCloseTo(16.84, 2);
-    expect(ik("grid-intake-132-33", "BB-33")).toBeCloseTo(5.86, 2);
+    expect(ik("grid-intake-132-33", "BB-132")).toBeCloseTo(16.84, 2); // source bus — no K_T
+    expect(ik("grid-intake-132-33", "BB-33")).toBeCloseTo(5.9947, 2); // behind a 12% TX (K_T<1 → higher)
   });
   test("primary substation 33/11", () => {
-    expect(ik("primary-substation-33-11", "BB-33")).toBeCloseTo(28.87, 2);
-    expect(ik("primary-substation-33-11", "BB-11")).toBeCloseTo(10.19, 2);
+    expect(ik("primary-substation-33-11", "BB-33")).toBeCloseTo(28.87, 2); // source bus — no K_T
+    expect(ik("primary-substation-33-11", "BB-11")).toBeCloseTo(10.3164, 2); // behind a 10% TX
   });
   test("motor feeder 11/6.6 (motor adds to the bus fault level)", () => {
-    expect(ik("motor-feeder-66", "BB-6.6")).toBeCloseTo(10.65, 2);
+    expect(ik("motor-feeder-66", "BB-6.6")).toBeCloseTo(10.6276, 2); // behind a 7% TX (K_T>1 → lower)
   });
-  test("ring main 33", () => {
+  test("ring main 33 (no transformers → K_T does not apply)", () => {
     expect(ik("ring-main-33", "BUS-A")).toBeCloseTo(48.0, 1);
     expect(ik("ring-main-33", "BUS-C")).toBeCloseTo(34.01, 2);
   });
   test("full plant — all the way down to 525 V", () => {
-    expect(ik("full-plant-132-525", "BB-132")).toBeCloseTo(16.91, 2);
-    expect(ik("full-plant-132-525", "BB-525V")).toBeCloseTo(34.55, 2);
+    expect(ik("full-plant-132-525", "BB-132")).toBeCloseTo(16.91, 2); // source bus — no K_T
+    expect(ik("full-plant-132-525", "BB-525V")).toBeCloseTo(34.414, 2);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { buildNetwork, effectiveStartingCurrentRatio } from "./network";
+import { buildNetwork, buildYBus, effectiveStartingCurrentRatio, transformerKtFactor } from "./network";
 import { EXAMPLES } from "../examples";
 
 const byId = (id: string) => {
@@ -65,5 +65,37 @@ describe("buildNetwork — topology", () => {
     // 3 electrical buses (BB-11, BB-6.6, motor node) — relays add none.
     expect(net.buses).toHaveLength(3);
     expect(net.branches.every((b) => b.componentType !== "switch")).toBe(true);
+  });
+});
+
+describe("IEC 60909 transformer K_T correction", () => {
+  test("formula: K_T = 0.95·c / (1 + 0.6·x_T)", () => {
+    expect(transformerKtFactor(0.1, 1.1)).toBeCloseTo((0.95 * 1.1) / (1 + 0.6 * 0.1), 9);
+  });
+
+  test("K_T < 1 for a high-impedance TX, > 1 for a low-impedance TX", () => {
+    expect(transformerKtFactor(0.15, 1.1)).toBeLessThan(1);
+    expect(transformerKtFactor(0.04, 1.1)).toBeGreaterThan(1);
+  });
+
+  test("each transformer branch stores its own-base reactance x_T", () => {
+    // grid intake: 12% TX, X/R 20 → x_T = 0.12·20/√401 ≈ 0.1199.
+    const tx = buildNetwork(byId("grid-intake-132-33")).branches.find((b) => b.componentType === "transformer")!;
+    expect(tx.xTpu).toBeCloseTo(0.12 * (20 / Math.sqrt(401)), 6);
+  });
+
+  test("correction scales the TX admittance on the SC build only (load flow untouched)", () => {
+    const net = buildNetwork(byId("grid-intake-132-33"));
+    const tx = net.branches.find((b) => b.componentType === "transformer")!;
+    const kt = transformerKtFactor(tx.xTpu!, 1.1);
+    const lf = buildYBus(net); // load-flow build — no correction
+    const sc = buildYBus(net, { scCFactor: 1.1 }); // short-circuit build
+    // The transformer's off-diagonal is its admittance alone; SC = LF / K_T.
+    const i = tx.fromBus;
+    const j = tx.toBus;
+    expect(sc.bIm[i][j]).toBeCloseTo(lf.bIm[i][j] / kt, 9);
+    expect(sc.gRe[i][j]).toBeCloseTo(lf.gRe[i][j] / kt, 9);
+    // K_T < 1 here (12% TX) → admittance grew, impedance shrank.
+    expect(Math.abs(sc.bIm[i][j])).toBeGreaterThan(Math.abs(lf.bIm[i][j]));
   });
 });
