@@ -131,11 +131,12 @@ label {
   grid-area: toolbar;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   padding: 0 16px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
   z-index: 10;
+  min-width: 0;
 }
 
 .toolbar .brand {
@@ -160,8 +161,134 @@ label {
 
 .toolbar .spacer { flex: 1; }
 
+.toolbar-menu-wrap {
+  position: relative;
+}
+
+.toolbar-menu-button {
+  min-width: 72px;
+  background: var(--bg-elev);
+  border-color: var(--border-strong);
+  font-weight: 600;
+}
+.toolbar-menu-button.active,
+.toolbar-menu-button:hover {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+  background: var(--bg-elev-2);
+}
+
+.toolbar-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 49;
+}
+
+.toolbar-menu {
+  position: absolute;
+  top: 38px;
+  left: 0;
+  z-index: 50;
+  width: 250px;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: calc(var(--radius) + 2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.toolbar-menu-section {
+  position: relative;
+}
+
+.toolbar-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text);
+  text-align: left;
+}
+.toolbar-menu-item:hover,
+.toolbar-menu-item.active {
+  background: var(--bg-elev-2);
+  border-color: var(--border);
+}
+.toolbar-menu-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.toolbar-menu-item:disabled:hover {
+  background: transparent;
+  border-color: transparent;
+}
+.toolbar-menu-item kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+
+.toolbar-menu-divider {
+  height: 1px;
+  margin: 6px 2px;
+  background: var(--border);
+}
+
+.toolbar-study-group,
+.toolbar-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.toolbar-study-group {
+  padding: 3px;
+  background: rgba(34, 211, 238, 0.05);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 3px);
+}
+.toolbar-study-group button.primary {
+  padding-inline: 10px;
+}
+
+.toolbar-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 25px;
+  padding: 2px 7px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--accent);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+button.toolbar-chip:hover {
+  border-color: var(--accent-dim);
+  background: var(--bg-elev);
+}
+
+.dirty-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.55);
+}
+
 .toolbar .project-name {
-  width: 200px;
+  width: 180px;
   background: transparent;
   border: 1px solid transparent;
   font-family: var(--font-sans);
@@ -1005,7 +1132,7 @@ table.results-table td:first-child, table.results-table th:first-child {
 
 .toolbar button.pill {
   font-size: 11px;
-  padding: 3px 9px;
+  padding: 4px 9px;
   background: var(--bg-elev);
   border: 1px solid var(--border-strong);
   color: var(--text-dim);
@@ -1251,6 +1378,11 @@ table.results-table td:first-child, table.results-table th:first-child {
   box-shadow: var(--shadow-lg);
   min-width: 280px;
   padding: 4px;
+}
+.examples-menu.compact {
+  top: -6px;
+  left: calc(100% + 8px);
+  min-width: 300px;
 }
 .examples-menu .examples-item {
   display: flex;

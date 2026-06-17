@@ -41,6 +41,7 @@ export function Toolbar() {
 
   const fileInput = useRef<HTMLInputElement>(null);
   const [examplesOpen, setExamplesOpen] = useState(false);
+  const [fileMenuOpen, setFileMenuOpen] = useState(false);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -108,6 +109,7 @@ export function Toolbar() {
   };
 
   const onNew = () => {
+    setFileMenuOpen(false);
     if (!isDirty || confirm("You have unsaved changes. Discard and start a new project?")) {
       newProject();
     }
@@ -115,10 +117,31 @@ export function Toolbar() {
 
   const onPickExample = (file: ProjectFile) => {
     setExamplesOpen(false);
+    setFileMenuOpen(false);
     if (!isDirty || confirm("You have unsaved changes. Discard and load this example?")) {
       // Clone deep enough that edits to the loaded project don't mutate our bundled copy.
       loadProject(JSON.parse(JSON.stringify(file)) as ProjectFile);
     }
+  };
+
+  const onFileOpen = () => {
+    setFileMenuOpen(false);
+    onOpen();
+  };
+
+  const onFileSave = () => {
+    setFileMenuOpen(false);
+    onSave();
+  };
+
+  const onFileUndo = () => {
+    setFileMenuOpen(false);
+    undo();
+  };
+
+  const onFileRedo = () => {
+    setFileMenuOpen(false);
+    redo();
   };
 
   return (
@@ -127,51 +150,77 @@ export function Toolbar() {
         POWER<span style={{ color: "var(--text)" }}>·SIM</span>
         <span className="brand-version"> v0.18</span>
       </div>
-      <button
-        className={explainMode ? "pill on" : "pill"}
-        onClick={() => setExplainMode(!explainMode)}
-        title="Toggle Explain mode — adds info icons and tooltips throughout the UI (shortcut: ?)"
-      >
-        Explain: {explainMode ? "on" : "off"}
-      </button>
-      <button
-        className={glossaryOpen ? "pill on" : "pill"}
-        onClick={() => setGlossaryOpen(!glossaryOpen)}
-        title="Open the glossary drawer (formulas, bus types, per-unit, symbol legend)"
-      >
-        Glossary
-      </button>
-      <div className="divider" />
-      <button onClick={onNew}>New</button>
-      <button onClick={onOpen}>Open</button>
-      <div style={{ position: "relative" }}>
-        <button onClick={() => setExamplesOpen((v) => !v)} title="Load a bundled example network">
-          Examples ▾
+      <div className="toolbar-menu-wrap">
+        <button
+          className={fileMenuOpen ? "toolbar-menu-button active" : "toolbar-menu-button"}
+          onClick={() => {
+            setFileMenuOpen((v) => !v);
+            setExamplesOpen(false);
+          }}
+          title="Project file actions"
+        >
+          File ▾
         </button>
-        {examplesOpen && (
+        {fileMenuOpen && (
           <>
             <div
-              style={{ position: "fixed", inset: 0, zIndex: 49 }}
-              onClick={() => setExamplesOpen(false)}
+              className="toolbar-menu-backdrop"
+              onClick={() => {
+                setFileMenuOpen(false);
+                setExamplesOpen(false);
+              }}
             />
-            <div className="examples-menu">
-              {EXAMPLES.map((ex) => (
+            <div className="toolbar-menu">
+              <button className="toolbar-menu-item" onClick={onNew}>
+                <span>New project</span>
+                <kbd>new</kbd>
+              </button>
+              <button className="toolbar-menu-item" onClick={onFileOpen}>
+                <span>Open…</span>
+                <kbd>.psim</kbd>
+              </button>
+              <div className="toolbar-menu-section">
                 <button
-                  key={ex.id}
-                  className="examples-item"
-                  onClick={() => onPickExample(ex.file)}
+                  className={examplesOpen ? "toolbar-menu-item active" : "toolbar-menu-item"}
+                  onClick={() => setExamplesOpen((v) => !v)}
+                  title="Load a bundled example network"
                 >
-                  <span className="examples-name">{ex.name}</span>
-                  <span className="examples-desc">{ex.description}</span>
+                  <span>Examples</span>
+                  <kbd>›</kbd>
                 </button>
-              ))}
+                {examplesOpen && (
+                  <div className="examples-menu compact">
+                    {EXAMPLES.map((ex) => (
+                      <button
+                        key={ex.id}
+                        className="examples-item"
+                        onClick={() => onPickExample(ex.file)}
+                      >
+                        <span className="examples-name">{ex.name}</span>
+                        <span className="examples-desc">{ex.description}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="toolbar-menu-divider" />
+              <button className="toolbar-menu-item" onClick={onFileSave}>
+                <span>Save project</span>
+                <kbd>{isDirty ? "unsaved" : "saved"}</kbd>
+              </button>
+              <div className="toolbar-menu-divider" />
+              <button className="toolbar-menu-item" onClick={onFileUndo} disabled={!canUndo}>
+                <span>Undo</span>
+                <kbd>Ctrl+Z</kbd>
+              </button>
+              <button className="toolbar-menu-item" onClick={onFileRedo} disabled={!canRedo}>
+                <span>Redo</span>
+                <kbd>Ctrl+Y</kbd>
+              </button>
             </div>
           </>
         )}
       </div>
-      <button onClick={onSave} title={isDirty ? "Unsaved changes" : "Project saved"}>
-        Save{isDirty ? " *" : ""}
-      </button>
       <input
         ref={fileInput}
         type="file"
@@ -180,69 +229,40 @@ export function Toolbar() {
         onChange={onFileChosen}
       />
       <div className="divider" />
-      <button
-        onClick={undo}
-        disabled={!canUndo}
-        title="Undo (Ctrl+Z)"
-        style={{ opacity: canUndo ? 1 : 0.35 }}
-      >
-        Undo
-      </button>
-      <button
-        onClick={redo}
-        disabled={!canRedo}
-        title="Redo (Ctrl+Y / Ctrl+Shift+Z)"
-        style={{ opacity: canRedo ? 1 : 0.35 }}
-      >
-        Redo
-      </button>
-      <div className="divider" />
-      <button className="primary" onClick={runLoadFlow}>
-        Run Load Flow
-      </button>
-      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+      <div className="toolbar-study-group" aria-label="Analysis studies">
+        <button className="primary" onClick={runLoadFlow}>
+          Load Flow
+        </button>
         <button
           className="primary"
           onClick={runShortCircuit}
           disabled={!faultBusId}
           title={!faultBusId ? "Click a busbar first to select the fault location" : ""}
         >
-          Run Short Circuit
+          Short Circuit
         </button>
         <button
           title="IEC 60909 voltage factor c: 1.10 = maximum fault current, 1.05 = minimum"
-          style={{
-            fontSize: "11px",
-            padding: "2px 6px",
-            background: "var(--panel-bg)",
-            border: "1px solid var(--border)",
-            color: "var(--accent)",
-            cursor: "pointer",
-            borderRadius: 3,
-          }}
+          className="toolbar-chip"
           onClick={() => setShortCircuitCFactor(shortCircuitCFactor === 1.10 ? 1.05 : 1.10)}
         >
           c={shortCircuitCFactor.toFixed(2)}
         </button>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
         <button
           className="primary"
           onClick={runArcFlash}
           disabled={!faultBusId}
           title={!faultBusId ? "Click a busbar first to select the location" : "IEEE 1584 incident energy at the selected bus"}
         >
-          Run Arc Flash
+          Arc Flash
         </button>
         <button
           title="Arc-flash standard edition: 2018 (electrode configs, enclosure correction) or 2002"
-          style={{ fontSize: 11, padding: "2px 6px", background: "var(--panel-bg)", border: "1px solid var(--border)", color: "var(--accent)", cursor: "pointer", borderRadius: 3 }}
+          className="toolbar-chip"
           onClick={() => setArcFlashMethod(arcFlashMethod === "1584-2018" ? "1584-2002" : "1584-2018")}
         >
           {arcFlashMethod}
         </button>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
         <button
           className="primary"
           onClick={runMotorStarting}
@@ -253,33 +273,44 @@ export function Toolbar() {
               : "Click a motor first to select it as the starting motor"
           }
         >
-          Run Motor Start
+          Motor Start
         </button>
         {startingMotorLabel && (
           <span
             title="Starting motor"
-            style={{
-              fontSize: "11px",
-              padding: "2px 6px",
-              background: "var(--panel-bg)",
-              border: "1px solid var(--border)",
-              color: "var(--accent)",
-              borderRadius: 3,
-            }}
+            className="toolbar-chip"
           >
             {startingMotorLabel}
           </span>
         )}
       </div>
-      <button onClick={clearResults}>Clear</button>
-      <button
-        title="Toggle the level of detail on edge labels after a load flow run"
-        onClick={() => setEdgeReadoutMode(edgeReadoutMode === "minimal" ? "detailed" : "minimal")}
-        style={{ fontSize: "11px" }}
-      >
-        Labels: {edgeReadoutMode === "minimal" ? "A only" : "A + kW"}
-      </button>
+      <div className="divider" />
+      <div className="toolbar-tools">
+        <button
+          className={explainMode ? "pill on" : "pill"}
+          onClick={() => setExplainMode(!explainMode)}
+          title="Toggle Explain mode — adds info icons and tooltips throughout the UI (shortcut: ?)"
+        >
+          Explain
+        </button>
+        <button
+          className={glossaryOpen ? "pill on" : "pill"}
+          onClick={() => setGlossaryOpen(!glossaryOpen)}
+          title="Open the glossary drawer (formulas, bus types, per-unit, symbol legend)"
+        >
+          Glossary
+        </button>
+        <button
+          className="pill"
+          title="Toggle the level of detail on edge labels after a load flow run"
+          onClick={() => setEdgeReadoutMode(edgeReadoutMode === "minimal" ? "detailed" : "minimal")}
+        >
+          Labels: {edgeReadoutMode === "minimal" ? "A" : "A+kW"}
+        </button>
+        <button className="pill" onClick={clearResults}>Clear</button>
+      </div>
       <div className="spacer" />
+      {isDirty && <span className="dirty-dot" title="Unsaved changes" />}
       <input
         className="project-name"
         value={projectName}
