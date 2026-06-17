@@ -80,6 +80,10 @@ export function GenericNode({ id, data, selected }: NodeProps) {
 
   const isBusbar = d.componentType === "busbar";
   const busLength = d.busLengthPx ?? 200;
+  const symbolSize =
+    d.componentType === "transformer" ? 52 :
+    d.componentType === "relay" ? 22 :
+    36;
 
   return (
     <div className={className} style={isBusbar ? { width: busLength } : undefined}>
@@ -128,7 +132,7 @@ export function GenericNode({ id, data, selected }: NodeProps) {
         <div className="node-symbol" onClick={onSymbolClick}>
           <ComponentSymbol
             type={d.componentType}
-            size={d.componentType === "transformer" ? 52 : 36}
+            size={symbolSize}
             state={{ closed: d.switchClosed, intact: d.fuseIntact }}
           />
         </div>

@@ -11,6 +11,7 @@ import type { BusbarParams, CtParams, RelayParams } from "../types";
 import { CtGlyph } from "./symbols";
 
 const DEFAULT_NON_BUS_WIDTH = 80;
+const DEFAULT_BUSBAR_HEIGHT = 72;
 
 interface EdgeData {
   label?: string;
@@ -33,6 +34,18 @@ export function BusbarEdge(props: EdgeProps) {
 
   let sx = sourceX;
   let tx = targetX;
+  let sy = sourceY;
+  let ty = targetY;
+
+  const busbarConductorY = (busCompId: string, fallbackHandleY: number): number => {
+    const bus = components.find((c) => c.id === busCompId);
+    if (!bus || bus.type !== "busbar") return fallbackHandleY;
+    // The visible busbar conductor is the cyan strip near the top of the
+    // busbar card: 6px top padding + 6px strip height / 2.
+    // Snap wires to that conductor instead of to the card edge/handle dot so
+    // connections visually land on the bus itself.
+    return bus.position.y + 9;
+  };
 
   const centerX = (compId: string, fallbackHandleX: number): number => {
     const comp = components.find((c) => c.id === compId);
@@ -55,20 +68,42 @@ export function BusbarEdge(props: EdgeProps) {
     return Math.max(left, Math.min(right, x));
   };
 
+  const busbarOutsideLabelPosition = (busCompId: string, otherY: number, x: number) => {
+    const bus = components.find((c) => c.id === busCompId);
+    if (!bus || bus.type !== "busbar") return null;
+    const node = busCompId === source ? srcNode : tgtNode;
+    const height = node?.measured?.height ?? DEFAULT_BUSBAR_HEIGHT;
+    const belowBus = otherY >= bus.position.y + height / 2;
+    return {
+      x,
+      y: belowBus ? bus.position.y + height + 10 : bus.position.y - 10,
+    };
+  };
+
   if (srcComp?.type === "busbar" && tgtComp?.type !== "busbar") {
     sx = clampToBusbar(source, centerX(target, targetX));
+    sy = busbarConductorY(source, sourceY);
   } else if (tgtComp?.type === "busbar" && srcComp?.type !== "busbar") {
     tx = clampToBusbar(target, centerX(source, sourceX));
+    ty = busbarConductorY(target, targetY);
   }
 
   const path =
     Math.abs(sx - tx) < 0.5
-      ? `M ${sx} ${sourceY} L ${tx} ${targetY}`
-      : `M ${sx} ${sourceY} L ${sx} ${(sourceY + targetY) / 2} L ${tx} ${(sourceY + targetY) / 2} L ${tx} ${targetY}`;
+      ? `M ${sx} ${sy} L ${tx} ${ty}`
+      : `M ${sx} ${sy} L ${sx} ${(sy + ty) / 2} L ${tx} ${(sy + ty) / 2} L ${tx} ${ty}`;
 
   const midX = (sx + tx) / 2;
-  const midY = (sourceY + targetY) / 2;
+  const midY = (sy + ty) / 2;
   const badgeY = midY - (ed?.label ? 15 : 0);
+  const edgeLabelPosition =
+    srcComp?.type === "busbar" && tgtComp?.type !== "busbar"
+      ? busbarOutsideLabelPosition(source, ty, sx)
+      : tgtComp?.type === "busbar" && srcComp?.type !== "busbar"
+        ? busbarOutsideLabelPosition(target, sy, tx)
+        : null;
+  const labelX = edgeLabelPosition?.x ?? midX;
+  const labelY = edgeLabelPosition?.y ?? midY;
   const toneClass = ed?.tone ? `tone-${ed.tone}` : "";
 
   // Relays that measure this wire's CT get a faint dotted line from the relay
@@ -129,7 +164,7 @@ export function BusbarEdge(props: EdgeProps) {
             className={`edge-readout ${toneClass}`}
             style={{
               position: "absolute",
-              transform: `translate(-50%, -50%) translate(${midX}px, ${midY}px)`,
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
               pointerEvents: "none",
             }}
           >
