@@ -31,6 +31,11 @@ export interface GridSourceParams {
 export interface BusbarParams {
   nominal_voltage_kv: number;
   length_px: number; // visual length of the busbar on the canvas
+  // Arc-flash equipment characteristics (IEEE 1584). Optional — legacy files
+  // and example networks default these via ?? at the use sites.
+  arc_equipment_class?: string; // equipment type (switchgear / MCC / cable / open-air)
+  arc_grounded?: boolean;       // system grounding — affects 1584-2002 incident energy
+  arc_electrode_config?: "VCB" | "VCBB" | "HCB" | "VOA" | "HOA"; // 1584-2018 electrode configuration
 }
 
 export interface TransformerParams {
@@ -319,6 +324,29 @@ export interface ShortCircuitResult {
   ipPeakKa: number; // i_p — peak short-circuit current
   contributions: ShortCircuitContribution[];
   branchFlows: ShortCircuitBranchFlow[];
+}
+
+// ---------- Arc flash (IEEE 1584) ----------
+
+export interface ArcFlashResult {
+  busId: string;
+  busLabel: string;
+  voltageKv: number;
+  boltedKa: number;          // bolted 3-phase fault current
+  arcingKa: number;          // arcing current (< bolted)
+  clearingTimeS: number;     // arc duration used
+  clearingSource: string;    // protective device that set the time, or "assumed"
+  method: string;            // "IEEE 1584-2018" or "IEEE 1584-2002"
+  equipmentClassLabel: string;
+  electrodeConfig?: string;  // 2018 only
+  gapMm: number;
+  workingDistanceMm: number;
+  grounded: boolean;
+  outOfRange: boolean;       // true above 15 kV — IEEE 1584 is extrapolated (use Lee)
+  incidentEnergyCal: number; // cal/cm² at the working distance
+  arcFlashBoundaryMm: number;
+  ppeCategory: number | null;
+  ppeLabel: string;
 }
 
 // ---------- Validation ----------

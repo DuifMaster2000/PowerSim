@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Power Sim — Methodology &amp; Function Reference</title>
+<style>
+  :root {
+    --ink: #14181f; --muted: #5b6675; --line: #d9dee6; --accent: #0a6cff;
+    --bg-soft: #f5f7fa; --code: #e8edf3; --warn: #9a6b00; --warn-bg: #fff7e6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink); line-height: 1.55; margin: 0; background: #fff;
+    font-size: 15px;
+  }
+  .page { max-width: 880px; margin: 0 auto; padding: 48px 40px 80px; }
+  header.cover { border-bottom: 3px solid var(--accent); padding-bottom: 22px; margin-bottom: 8px; }
+  header.cover h1 { font-size: 30px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  header.cover .sub { color: var(--muted); font-size: 15px; }
+  header.cover .meta { color: var(--muted); font-size: 13px; margin-top: 12px; }
+  h2 { font-size: 21px; margin: 38px 0 6px; padding-top: 10px; border-top: 1px solid var(--line); letter-spacing: -0.01em; }
+  h2 .tag { font-size: 12px; font-weight: 600; color: #fff; background: var(--accent); border-radius: 4px; padding: 2px 7px; vertical-align: middle; margin-left: 8px; }
+  h3 { font-size: 16px; margin: 22px 0 4px; }
+  h4 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 16px 0 4px; }
+  p { margin: 6px 0; }
+  code { background: var(--code); padding: 1px 5px; border-radius: 3px; font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 0.86em; }
+  .eq { background: var(--bg-soft); border-left: 3px solid var(--accent); padding: 10px 14px; margin: 10px 0; font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 13.5px; white-space: pre-wrap; border-radius: 0 4px 4px 0; }
+  .fns { background: var(--bg-soft); border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px; margin: 10px 0; font-size: 13.5px; }
+  .fns h4 { margin-top: 0; }
+  .fns ul { margin: 4px 0; padding-left: 18px; }
+  .fns li { margin: 3px 0; }
+  .fns .file { color: var(--accent); font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 0.92em; }
+  .note { background: var(--warn-bg); border: 1px solid #f0dca0; color: var(--warn); border-radius: 6px; padding: 8px 12px; margin: 10px 0; font-size: 13.5px; }
+  .note strong { color: var(--warn); }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 13px; }
+  th, td { border: 1px solid var(--line); padding: 6px 9px; text-align: left; vertical-align: top; }
+  th { background: var(--bg-soft); font-weight: 600; }
+  td code { font-size: 0.9em; }
+  ul.toc { columns: 2; column-gap: 32px; padding-left: 18px; font-size: 14px; }
+  ul.toc li { margin: 3px 0; break-inside: avoid; }
+  a { color: var(--accent); text-decoration: none; }
+  .pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 10px; background: var(--code); color: var(--muted); margin-right: 4px; }
+  footer { margin-top: 44px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12.5px; }
+  @media print {
+    .page { max-width: none; padding: 0 8mm; }
+    h2 { break-before: auto; page-break-inside: avoid; }
+    h2, h3 { page-break-after: avoid; }
+    .eq, .fns, .note, table { page-break-inside: avoid; }
+    a { color: var(--ink); }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="cover">
+  <h1>Power Sim — Methodology &amp; Function Reference</h1>
+  <div class="sub">A complete account of the analysis methods implemented, the standards they follow, the functions that realise them, and how each is used in the application.</div>
+  <div class="meta">Application version v0.17 · Generated 2026-06-14 · Browser-based power-systems &amp; protection simulator (React 18 + TypeScript)</div>
+</header>
+
+<p><strong>How to read this report.</strong> Each section states the engineering <em>purpose</em>, the <em>standard / method</em> applied, the <em>key equations</em>, the <em>implementing functions</em> (file and name), how the result is <em>utilised</em> in the UI, and any <em>assumptions or limitations</em>. A consolidated function index and a global limitations list appear at the end.</p>
+
+<h3>Contents</h3>
+<ul class="toc">
+  <li><a href="#arch">0. Architecture &amp; conventions</a></li>
+  <li><a href="#math">1. Numerical foundation</a></li>
+  <li><a href="#network">2. Network model (topology)</a></li>
+  <li><a href="#loadflow">3. Load flow (Newton–Raphson)</a></li>
+  <li><a href="#sc">4. Short circuit (IEC 60909)</a></li>
+  <li><a href="#motor">5. Motor starting</a></li>
+  <li><a href="#oc">6. Overcurrent protection (IDMT)</a></li>
+  <li><a href="#thermal">7. Thermal protection (49)</a></li>
+  <li><a href="#grading">8. Grading / coordination</a></li>
+  <li><a href="#arc">9. Arc flash (IEEE 1584)</a></li>
+  <li><a href="#valid">10. Validation</a></li>
+  <li><a href="#index">11. Function index</a></li>
+  <li><a href="#limits">12. Global limitations</a></li>
+</ul>
+
+<!-- 0 -->
+<h2 id="arch">0 · Architecture &amp; conventions</h2>
+<p>The codebase is split into three decoupled layers. The <strong>solver layer</strong> (<code>src/solver/</code>, plus the pure modules <code>src/idmt.ts</code>, <code>src/arcFlash.ts</code>, <code>src/protection/</code>) contains no React and no UI imports. The <strong>store</strong> (<code>src/store.ts</code>, Zustand) holds project state and dispatches every run. The <strong>UI layer</strong> imports from the solver only through store getters/actions.</p>
+<h4>Per-unit system</h4>
+<p>All electrical quantities are normalised to a common <code>base_mva</code> (default 100 MVA) and each bus's base kV. Impedances are converted to per-unit on the system base so that networks spanning multiple voltage levels combine correctly. Per-unit base impedance Z<sub>base</sub> = kV² / MVA<sub>base</sub>.</p>
+<h4>Complex arithmetic</h4>
+<p>A small complex-number library underpins every solver. Admittances, impedances and the Y-bus are complex; load flow and short circuit both operate on rectangular complex quantities.</p>
+<div class="fns"><h4>Implementing functions</h4>
+<ul>
+  <li><span class="file">solver/math.ts</span> — <code>C, cAdd, cSub, cMul, cDiv, cConj, cAbs, cArg, cFromPolar, cInv</code> (complex algebra); <code>solveLinear</code> (Gaussian elimination, partial pivoting); <code>invertComplexMatrix</code> (complex matrix inversion).</li>
+</ul></div>
+
+<!-- 1 -->
+<h2 id="math">1 · Numerical foundation <span class="tag">solver/math.ts</span></h2>
+<p><strong>Purpose.</strong> Provide the linear-algebra primitives the iterative solvers rely on: solving the Newton–Raphson correction system and inverting the Y-bus for the short-circuit impedance matrix.</p>
+<h4>Method</h4>
+<p><code>solveLinear(A, b)</code> solves <em>A·x = b</em> by Gaussian elimination with <strong>partial pivoting</strong> (largest-magnitude pivot per column). A pivot magnitude below <code>1e-14</code> raises a "singular matrix" error, which the load-flow path converts into a user-facing message. <code>invertComplexMatrix</code> performs the same on the augmented complex system to form the bus impedance matrix Z = Y⁻¹.</p>
+<div class="note"><strong>Limitation.</strong> The pivot tolerance is <em>absolute</em> (1e-14). For very stiff or badly scaled networks a relative tolerance (scaled to the largest matrix element) would be more robust.</div>
+
+<!-- 2 -->
+<h2 id="network">2 · Network model — topology builder <span class="tag">solver/network.ts</span></h2>
+<p><strong>Purpose.</strong> Translate the drawn single-line diagram (components + connections) into a solver-ready model of buses, branches, sources, motors and loads.</p>
+<h4>Method — terminal-level union-find</h4>
+<p>Every component terminal is a node in a <strong>union-find</strong> structure. Two terminals share one electrical bus if joined by any chain of wires, <strong>closed</strong> switches, intact fuses or busbars (these are "transparent"). Cables and transformers <strong>separate</strong> buses (they carry real impedance). Each equivalence class becomes a <code>BusModel</code>:</p>
+<ul>
+  <li>A class containing a real busbar takes that busbar's label and nominal kV.</li>
+  <li>Otherwise it is a <strong>synthetic bus</strong>, auto-named after the components on it (rendered as a cyan dot on the canvas).</li>
+</ul>
+<p><strong>Base-kV propagation:</strong> starting from the slack bus, base voltage is carried through cables (unchanged) and through transformers (scaled by the turns ratio), so every reachable bus gets a base kV. <strong>Orphan buses</strong> (unreachable through branches — e.g. an opened breaker isolating a section) are pruned and all indices re-mapped so the solver never sees a singular system.</p>
+<div class="fns"><h4>Implementing functions</h4>
+<ul>
+  <li><span class="file">solver/network.ts</span> — <code>buildNetwork(project, options?)</code> → <code>NetworkModel</code> (buses, branches, sources, motors, loads, slack index). <code>buildYBus(net)</code> assembles the complex nodal admittance matrix. <code>effectiveStartingCurrentRatio(method, lrc)</code> for motor starting.</li>
+  <li><span class="file">store.ts</span> — <code>getSyntheticBuses()</code>, <code>getComponentKv()</code> expose derived bus data to the UI without breaking the layering rule.</li>
+</ul></div>
+<h4>Utilisation</h4>
+<p>Every study calls <code>buildNetwork</code> first. The canvas renders synthetic-bus dots from <code>getSyntheticBuses()</code>; the grading chart's voltage-referral uses <code>getComponentKv()</code>.</p>
+
+<!-- 3 -->
+<h2 id="loadflow">3 · Load flow — Newton–Raphson <span class="tag">solver/loadFlow.ts</span></h2>
+<p><strong>Purpose.</strong> Compute the steady-state bus voltages and the resulting branch and load currents/flows.</p>
+<h4>Method</h4>
+<p>Full Newton–Raphson power-flow with three bus types: one <strong>slack</strong> (the first grid source, fixed V∠0°), <strong>PV</strong> buses (additional grid sources — fixed |V|, scheduled P), and <strong>PQ</strong> buses (everything else). At each iteration the real/reactive power mismatch is formed and the Jacobian (∂P/∂θ, ∂P/∂V, ∂Q/∂θ, ∂Q/∂V) is solved via <code>solveLinear</code> for the voltage corrections.</p>
+<div class="eq">Mismatch:  ΔPᵢ = Pᵢ^sched − Σⱼ |Vᵢ||Vⱼ|(Gᵢⱼcosθᵢⱼ + Bᵢⱼsinθᵢⱼ)
+            ΔQᵢ = Qᵢ^sched − Σⱼ |Vᵢ||Vⱼ|(Gᵢⱼsinθᵢⱼ − Bᵢⱼcosθᵢⱼ)
+Update:     [Δθ, ΔV]ᵀ = J⁻¹ [ΔP, ΔQ]ᵀ   until max|mismatch| < 1e-6</div>
+<p>Convergence tolerance <code>1e-6</code>, capped at <code>30</code> iterations. A divergence guard rejects any bus voltage leaving <code>[0.5, 2.0] pu</code> with a clear message. Per-load and per-motor currents are computed from the final bus voltages as I = S / (√3·V).</p>
+<div class="fns"><h4>Implementing functions</h4>
+<ul>
+  <li><span class="file">solver/loadFlow.ts</span> — <code>runLoadFlow(net, opts?)</code> → <code>LoadFlowResult</code> (buses, branches, loads, iterations, optional per-iteration history for the animation player).</li>
+  <li><span class="file">store.ts</span> — <code>runLoadFlow()</code> action (validates, builds the network, runs, sets <code>runMode = "loadflow"</code>).</li>
+</ul></div>
+<h4>Utilisation</h4>
+<p>Toolbar → <strong>Run Load Flow</strong>. Bus voltages and branch currents appear on the canvas (edge labels, bus readouts) and in the results panel; an animation player can scrub the iteration history when Explain mode is on.</p>
+
+<!-- 4 -->
+<h2 id="sc">4 · Short circuit — IEC 60909 <span class="tag">solver/shortCircuit.ts</span></h2>
+<p><strong>Purpose.</strong> Compute the initial symmetrical three-phase fault current and peak current at a chosen bus, plus each source's contribution.</p>
+<h4>Method</h4>
+<p>A simplified IEC 60909 three-phase fault using the <strong>bus impedance matrix</strong>. Source impedances (grid sources, motors) are added to the Y-bus, which is inverted to Z. The fault is applied at the selected bus k:</p>
+<div class="eq">I″ₖ (pu) = c / |Zₖₖ|            (c = voltage factor, 1.10 max or 1.05 min)
+I″ₖ (kA) = I″ₖ(pu) × I_base,k
+X/R at fault = |Im Zₖₖ| / |Re Zₖₖ|
+κ = 1.02 + 0.98·e^(−3 / (X/R))     (IEC peak factor)
+i_p = κ · √2 · I″ₖ                  (peak short-circuit current)</div>
+<p>Each source/motor contribution is recovered from the corresponding column of Z (current divider), and branch flows are decomposed so the canvas can show kA on each side of a transformer at its own voltage base.</p>
+<div class="fns"><h4>Implementing functions</h4>
+<ul>
+  <li><span class="file">solver/shortCircuit.ts</span> — <code>runShortCircuit(net, faultBusIdx, cFactor)</code> → <code>ShortCircuitResult</code> (<code>ikSymKa</code>, <code>ipPeakKa</code>, contributions, branchFlows).</li>
+  <li><span class="file">store.ts</span> — <code>runShortCircuit()</code>, <code>setFaultBus()</code>, <code>setShortCircuitCFactor()</code>, and <code>getBusFaultLevels()</code> (per-bus Ik″ for the grading chart).</li>
+</ul></div>
+<h4>Utilisation</h4>
+<p>Click a busbar → <strong>Run Short Circuit</strong>. The c-factor toggle (1.05 / 1.10) selects min/max fault current. Results show Ik″, i_p and contributions; the same engine feeds bus fault-level lines on the grading chart and the bolted current for arc flash.</p>
+<div class="note"><strong>Limitations.</strong> Three-phase (balanced, positive-sequence) faults only — no single-line-to-ground / sequence networks yet. The IEC 60909 Kt transformer correction factor and PV-bus Q-limits are not applied, so results are mildly optimistic.</div>
+
+<!-- 5 -->
+<h2 id="motor">5 · Motor starting <span class="tag">solver/motorStart.ts</span></h2>
+<p><strong>Purpose.</strong> Determine the voltage dip across the network when a chosen motor starts, and whether the motor terminal voltage is high enough to develop starting torque.</p>
+<h4>Method</h4>
+<p>Two load flows are run and differenced. <strong>Pre-start:</strong> all motors in normal PQ mode. <strong>During-start:</strong> the chosen motor is replaced by its locked-rotor impedance, modelled as a constant <strong>shunt admittance</strong> on its bus (so the drawn power scales with V², the physically correct stalled-rotor behaviour). The per-bus dip is pre-start pu − during-start pu.</p>
+<p>The effective starting current depends on the start method:</p>
+<table>
+  <tr><th>Method</th><th>Starting current</th></tr>
+  <tr><td>DOL (direct-on-line)</td><td>full locked-rotor current (LRC)</td></tr>
+  <tr><td>Star-delta</td><td>LRC / 3</td></tr>
+  <tr><td>Soft-starter</td><td>min(LRC, 3.5 × FLC)</td></tr>
+  <tr><td>VFD</td><td>min(LRC, 1.1 × FLC)</td></tr>
+</table>
+<div class="fns"><h4>Implementing functions</h4>
+<ul>
+  <li><span class="file">solver/motorStart.ts</span> — <code>runMotorStarting(project, motorId)</code> → <code>MotorStartingResult</code>.</li>
+  <li><span class="file">solver/network.ts</span> — <code>effectiveStartingCurrentRatio(method, lrc)</code>; <code>buildNetwork(project, { startingMotorId })</code> injects the locked-rotor shunt.</li>
+  <li><span class="file">store.ts</span> — <code>runMotorStarting()</code>, <code>setStartingMotor()</code>.</li>
+</ul></div>
+<h4>Utilisation</h4>
+<p>Click a motor → <strong>Run Motor Start</strong>. The results panel shows the motor's terminal voltage and starting current/kVA, and a per-bus voltage-dip table (tone-coded against typical 0.85/0.95 pu thresholds).</p>
+<div class="note"><strong>Limitation.</strong> Models the worst-instant inrush only — no run-up/acceleration-time integration or torque-speed curve, and one motor at a time.</div>
+
+<!-- 6 -->
+<h2 id="oc">6 · Overcurrent protection — IDMT <span class="tag">src/idmt.ts</span></h2>
+<p><strong>Purpose.</strong> Compute relay operate times and time–current curves for inverse-time and definite-time overcurrent protection, across multiple curve families and hardware models.</p>
+<h4>Method — curve families</h4>
+<div class="eq">IEC 60255-151:   t = TMS · K / ((I/Is)^α − 1)
+   SI K=0.14 α=0.02 · VI K=13.5 α=1 · EI K=80 α=2 · LTI K=120 α=1
+IEEE C37.112:    t = TDM · ( A / ((I/Is)^p − 1) + B )
+   MI 0.0515/0.114/0.02 · VI 19.61/0.491/2 · EI 28.2/0.1217/2
+ABB RI:          t = TMS / (0.339 − 0.236 / (I/Is))
+Definite time:   t = constant
+Pickup Is = plug_setting × CT primary rating</div>
+<p>Multi-stage relays (low 3I&gt;, high 3I&gt;&gt;, instantaneous 3I&gt;&gt;&gt;) return the <strong>minimum operate time over enabled stages</strong> — the relay trips on whichever stage is fastest. The plotted composite curve is sampled with extra points straddling each stage pickup to render crisp vertical steps.</p>
+<h4>Relay hardware models</h4>
+<table>
+  <tr><th>Model</th><th>Curves</th><th>Plug</th><th>Time</th><th>Stages</th></tr>
+  <tr><td>Generic IDMT</td><td>IEC + DT</td><td>0.1–5 ×In</td><td>TMS 0.025–1.5</td><td>1</td></tr>
+  <tr><td>ABB REM615</td><td>IEC + ABB RI + DT</td><td>0.05–5 ×In</td><td>TMS 0.05–15</td><td>3</td></tr>
+  <tr><td>GE Multilin 869</td><td>IEEE + IEC + DT</td><td>0.05–20 ×In</td><td>TD 0.05–20</td><td>3</td></tr>
+</table>
+<h4>CT model</h4>
+<p>A current transformer is a property of a <strong>power wire</strong> (<code>Connection.ct</code>), not a placeable component. A relay references the wire it measures via <code>RelayParams.measured_connection_id</code> and trips its breaker over a dashed control wire. Pickup current is referred to the CT primary rating.</p>
+<div class="fns"><h4>Implementing functions</h4>
+<ul>
+  <li><span class="file">src/idmt.ts</span> — <code>idmtOperateTime(relay, ct, I)</code> (min over stages, dispatches IEC / IEEE / ABB-RI / DT); <code>idmtCurvePoints(...)</code> (plotted curve); <code>primaryPickupA</code>, <code>relayHighestPickupA</code>.</li>
+  <li><span class="file">src/defaults.ts</span> — <code>RELAY_MODELS</code> spec table (ranges + curve sets per model).</li>
+  <li><span class="file">store.ts</span> — <code>resolveRelayLinks()</code>, <code>getRelayLinks()</code>, <code>getRelayFaultCurrents()</code> (relay → fault current via the breaker's branch flow).</li>
+</ul></div>
+<h4>Utilisation</h4>
+<p>Relays are placed on the canvas and configured in the properties panel (model, curve, pickup, time, stages). Curves and operate-time markers appear on the <strong>Grading</strong> tab; the same operate-time function drives the arc-flash clearing time.</p>
+
+<!-- 7 -->
+<h2 id="thermal">7 · Thermal overload protection (49) <span class="tag">idmt.ts · protection/relay869Thermal.ts</span></h2>
+<p><strong>Purpose.</strong> Model motor winding heating for thermal-overload protection — both as a static time–current limit curve and as a full time-domain thermal-capacity simulation.</p>
+<h4>7a · Static thermal curves (grading chart)</h4>
+<div class="eq">ABB REM615 (IEC 60255-149 replica, cold):
+   t = τ · ln( I² / (I² − (k·Ib)²) )
+GE 869 "Standard" overload curve (Cutoff), m = I / FLA:
+   t = TDM · 2.2116623 / (0.02530337·(m−1)² + 0.05054758·(m−1))
+   held constant for m ≥ 8 (locked-rotor floor)</div>
+<p>The GE coefficients are the exact values from the 869 manual and were <strong>verified against its Standard-Curve TD-Multiplier table</strong> (e.g. 2× = 29.16 s, 3× = 10.93 s, 5× = 3.64 s at TD = 1). Base current Ib defaults to the CT primary rating.</p>
+<h4>7b · GE 869 dynamic thermal model <span class="pill">time-domain</span></h4>
+<p>A stateful simulation of Thermal Capacity Used (TCU, 0–100+%) implementing the 869 manual §9.2.1.2. Each step integrates heating or cooling; the relay trips at TCU = 100%.</p>
+<div class="eq">Eq 1 (unbalance bias):  Ieq = √( Iavg²·(1 + K·(I2/I1)²) )
+Eq 2 (trip time):       Standard curve above, or IEC 255-8 hot/cold
+                        with τ1 (stator) / τ2 (rotor) region selection
+Eq 3 (heating):         ΔTCU = 100 · dt / t_trip
+Eq 4 (cooling):         TCU → TCU_end + (TCU − TCU_end)·e^(−dt/τ_cool)
+                        TCU_end = (Ieq/OL)(1 − hot/cold)·100 running, 0 stopped</div>
+<p>Also implemented: RTD-temperature bias (a parallel TCU estimate; the larger governs, cannot trip alone), trip/latch/alarm/block output logic, and power-loss memory (TCU persists or decays per the motor state at the outage). A voltage-dependent acceleration module exists behind a flag (unvalidated).</p>
+<div class="fns"><h4>Implementing functions</h4>
+<ul>
+  <li><span class="file">src/idmt.ts</span> — <code>thermalCurvePoints(relay, ct, …)</code> (static curve, dispatches ABB vs GE).</li>
+  <li><span class="file">protection/relay869Thermal.ts</span> — <code>class Relay869ThermalModel</code> (<code>step()</code>, <code>equivalentCurrent()</code>, <code>tripTime()</code>, <code>applyControlPowerOutage()</code>); <code>geStandardTripTime()</code> (single source of truth for the GE curve, reused by idmt).</li>
+  <li><span class="file">protection/relay869Thermal.harness.ts</span> — runnable validation harness (`npx tsx …`).</li>
+  <li><span class="file">components/ThermalModeler.tsx</span> — the interactive scenario modeler UI.</li>
+</ul></div>
+<h4>Utilisation</h4>
+<p>The static curve plots on the <strong>Grading</strong> tab (must sit above the motor-start curve, below damage limits). The dynamic model is driven from the GE-869 relay's properties panel → <strong>"Open thermal scenario modeler"</strong>, which simulates TCU vs time over an editable current-vs-time scenario.</p>
+<div class="note"><strong>Validated.</strong> The harness reproduces the manual's trip-time table exactly and confirms cold-start floor settling, running-vs-stopped cooling constants, unbalance biasing (K=8) and power-loss memory. <strong>Not modelled:</strong> FlexCurves, voltage-dependent overload (exposed only experimentally), full RTD voting.</div>
+
+<!-- 8 -->
+<h2 id="grading">8 · Grading / coordination studies <span class="tag">components/GradingCurves.tsx</span></h2>
+<p><strong>Purpose.</strong> Plot a selected section's protective and damage curves on one log–log time–current chart to verify coordination.</p>
+<h4>Method</h4>
+<p>With the Grading tab open, clicking a component adds it to the study. Each contributes a curve:</p>
+<table>
+  <tr><th>Component</th><th>Curve / function</th></tr>
+  <tr><td>Relay (or breaker → its relay)</td><td>IDMT composite + thermal 49 (if enabled)</td></tr>
+  <tr><td>Fuse</td><td>approximate gG/aM melting band</td></tr>
+  <tr><td>Motor</td><td>start curve: LRC until run-up time, then FLC</td></tr>
+  <tr><td>Cable</td><td>adiabatic thermal damage I²t (k = 143 Cu/XLPE)</td></tr>
+  <tr><td>Transformer</td><td>IEC 60076-5 cat-I damage + 12×In inrush point</td></tr>
+  <tr><td>Busbar</td><td>vertical fault-level line (Ik″)</td></tr>
+</table>
+<div class="eq">Cable damage (adiabatic):    I = k·S / √t          (k=143, S = csa mm²)
+Transformer damage (cat I):  t = 1250 / m²,  3.5–25×In
+Voltage referral:            I_plot = I_actual · (kV_device / kV_ref)</div>
+<p>A <strong>reference-voltage</strong> referral can shift every curve to one common voltage through the transformer ratios, so devices on either side of a transformer become directly comparable (the equations and tables stay in actual amps; only the chart is referred).</p>
+<div class="fns"><h4>Implementing functions</h4>
+<ul>
+  <li><span class="file">src/idmt.ts</span> — <code>motorStartCurvePoints</code>, <code>cableDamageCurvePoints</code>, <code>transformerDamageCurvePoints</code>, <code>transformerInrushPoint</code>, <code>fuseTccPoints</code>.</li>
+  <li><span class="file">store.ts</span> — <code>getMotorGradingData()</code>, <code>getBusFaultLevels()</code>, <code>getComponentKv()</code>, <code>toggleGradingComponent()</code>, <code>setGradingRefKv()</code>.</li>
+  <li><span class="file">components/GradingCurves.tsx</span> — chart, fault-current markers, grading-margin table (Δt &lt; 0.3 s bad / &lt; 0.4 s warn), CSV export.</li>
+</ul></div>
+
+<!-- 9 -->
+<h2 id="arc">9 · Arc flash — IEEE 1584-2002 <span class="tag">src/arcFlash.ts</span></h2>
+<p><strong>Purpose.</strong> Compute the arc-flash incident energy, boundary and required PPE at a bus — the protection study's practical deliverable.</p>
+<h4>Method</h4>
+<div class="eq">Arcing current (lg = log₁₀):
+  V < 1 kV:  lg Ia = K + 0.662·lgIbf + 0.0966·V + 0.000526·G
+                     + 0.5588·V·lgIbf − 0.00304·G·lgIbf   (K box −0.097 / open −0.153)
+  V ≥ 1 kV:  lg Ia = 0.00402 + 0.983·lgIbf
+Normalised energy:  lg En = K1 + K2 + 1.081·lgIa + 0.0011·G
+Incident energy:    E[cal/cm²] = Cf · En · (t / 0.2) · (610 / D)^x
+Arc-flash boundary: D_B = 610 · ( Cf·En·(t/0.2) / 1.2 )^(1/x)</div>
+<p>The busbar carries an equipment <strong>class</strong> (switchgear, MCC/panelboard, cable, open-air) and grounded/ungrounded; the conductor gap G, distance exponent x and working distance D are then <strong>selected automatically from the bus's voltage band</strong> (≤1 kV / &gt;1–5 kV / &gt;5–15 kV) per IEEE 1584 Table 4 (<code>resolveEquipment</code>). PPE category follows NFPA 70E thresholds (1.2 / 4 / 8 / 25 / 40 cal/cm²).</p>
+<div class="note"><strong>Validity.</strong> The IEEE 1584-2002 empirical model is only valid 0.208–15 kV. Above 15 kV (e.g. 33 kV, 132 kV) the result is flagged <em>out of range</em> in the panel — the Lee theoretical-max-power method is the correct tool there and is not yet implemented.</div>
+<p><strong>Clearing time from protection:</strong> the engine derives the arc duration <em>t</em> from the fastest relay's operate time evaluated at the <strong>arcing</strong> current (each relay's fault current is scaled from the bolted bus current by the arcing/bolted ratio). Because arcing current is lower than bolted, the device clears slightly slower — the key arc-flash subtlety — and a flagged 2.0 s fallback is used if nothing operates.</p>
+<div class="fns"><h4>Implementing functions</h4>
+<ul>
+  <li><span class="file">src/arcFlash.ts</span> — <code>arcingCurrentKa</code>, <code>incidentEnergyCal</code>, <code>arcFlashBoundaryMm</code>, <code>ppeRating</code>, <code>EQUIPMENT_CLASSES</code>.</li>
+  <li><span class="file">store.ts</span> — <code>runArcFlash()</code> (short circuit → arcing current → clearing time → energy).</li>
+</ul></div>
+<h4>Utilisation</h4>
+<p>Click a busbar → <strong>Run Arc Flash</strong>. Results panel shows a cal/cm² badge (toned by PPE category), bolted/arcing current, clearing time and device, incident energy and boundary, with CSV export. Busbars carry an equipment-class and grounded/ungrounded setting.</p>
+<div class="note"><strong>Validated</strong> against the 480 V / 20 kA worked example (Ia = 11.22 kA). <strong>Not modelled:</strong> IEEE 1584-2018 (electrode configs, enclosure correction); whole-network table (selected bus only); fuse clearing times in the auto-derivation.</div>
+
+<!-- 10 -->
+<h2 id="valid">10 · Validation <span class="tag">src/validation.ts</span></h2>
+<p><strong>Purpose.</strong> Catch modelling problems before a run. <strong>Errors</strong> block a study; <strong>warnings</strong> inform but allow it.</p>
+<p>Checks: missing/NaN parameters; required terminal connectivity; branch-neighbour rules (transformer / cable / switch / fuse may sit inline — a synthetic bus is created where needed); at least one grid source; transformer voltage-ratio vs connected-bus mismatch (warning); and protection completeness (relay needs a CT-equipped wire and a breaker).</p>
+<div class="fns"><h4>Implementing functions</h4>
+<ul><li><span class="file">src/validation.ts</span> — <code>validateProject(project)</code> → <code>ValidationIssue[]</code>; called by <code>store.validate()</code> before every run.</li></ul></div>
+
+<!-- 11 -->
+<h2 id="index">11 · Function index</h2>
+<table>
+  <tr><th>Function</th><th>File</th><th>Role</th></tr>
+  <tr><td><code>buildNetwork</code></td><td>solver/network.ts</td><td>SLD → bus/branch model (union-find)</td></tr>
+  <tr><td><code>buildYBus</code></td><td>solver/network.ts</td><td>Complex nodal admittance matrix</td></tr>
+  <tr><td><code>effectiveStartingCurrentRatio</code></td><td>solver/network.ts</td><td>Start-method current multiplier</td></tr>
+  <tr><td><code>runLoadFlow</code></td><td>solver/loadFlow.ts</td><td>Newton–Raphson power flow</td></tr>
+  <tr><td><code>runShortCircuit</code></td><td>solver/shortCircuit.ts</td><td>IEC 60909 3-phase fault</td></tr>
+  <tr><td><code>runMotorStarting</code></td><td>solver/motorStart.ts</td><td>Pre/during-start dip study</td></tr>
+  <tr><td><code>solveLinear</code> / <code>invertComplexMatrix</code></td><td>solver/math.ts</td><td>Linear solve / matrix inversion</td></tr>
+  <tr><td><code>idmtOperateTime</code> / <code>idmtCurvePoints</code></td><td>idmt.ts</td><td>Overcurrent operate time / curve</td></tr>
+  <tr><td><code>thermalCurvePoints</code></td><td>idmt.ts</td><td>Static thermal-overload curve</td></tr>
+  <tr><td><code>motorStartCurvePoints</code></td><td>idmt.ts</td><td>Motor start curve</td></tr>
+  <tr><td><code>cableDamageCurvePoints</code></td><td>idmt.ts</td><td>Cable adiabatic damage</td></tr>
+  <tr><td><code>transformerDamageCurvePoints</code> / <code>transformerInrushPoint</code></td><td>idmt.ts</td><td>Transformer damage + inrush</td></tr>
+  <tr><td><code>fuseTccPoints</code></td><td>idmt.ts</td><td>Approx. fuse melting band</td></tr>
+  <tr><td><code>Relay869ThermalModel</code> / <code>geStandardTripTime</code></td><td>protection/relay869Thermal.ts</td><td>Dynamic TCU model + GE curve</td></tr>
+  <tr><td><code>arcingCurrentKa</code> / <code>incidentEnergyCal</code> / <code>arcFlashBoundaryMm</code> / <code>ppeRating</code></td><td>arcFlash.ts</td><td>IEEE 1584 arc flash</td></tr>
+  <tr><td><code>validateProject</code></td><td>validation.ts</td><td>Pre-solve checks</td></tr>
+  <tr><td><code>get* / run*</code> getters &amp; actions</td><td>store.ts</td><td>Dispatch + UI-facing derived data</td></tr>
+</table>
+
+<!-- 12 -->
+<h2 id="limits">12 · Global limitations</h2>
+<ul>
+  <li><strong>Balanced positive-sequence only</strong> — no negative/zero-sequence networks, so no single-line-to-ground faults or ground (50N/51N) protection.</li>
+  <li><strong>IEC 60909 simplifications</strong> — Kt transformer correction and PV-bus Q-limits not applied; results mildly optimistic.</li>
+  <li><strong>Arc flash</strong> — IEEE 1584-2002 (not 2018); single selected bus; relay-only clearing-time derivation.</li>
+  <li><strong>Motor starting</strong> — worst-instant inrush; no run-up integration or torque-speed modelling; single motor.</li>
+  <li><strong>Fuse / cable / transformer curves</strong> — representative educational fits, not manufacturer data.</li>
+  <li><strong>Numerical</strong> — absolute (not relative) pivot tolerance in the linear solver; no automated solver test suite yet.</li>
+  <li>This is a learning / engineering exploration tool — verify against vendor data and the governing standards before using results for compliance work.</li>
+</ul>
+
+<footer>
+  Power Sim · methodology &amp; function reference · v0.17 · This document is generated from the current source tree; function names and equations reflect the code as committed.
+</footer>
+
+</div>
+</body>
+</html>

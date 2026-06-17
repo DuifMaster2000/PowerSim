@@ -4,7 +4,7 @@
 // depending on what was last run.
 // =====================================================================
 
-import { Fragment } from "react";
+import { Fragment, type ReactNode } from "react";
 import { useStore } from "../store";
 import type { BusResult, BranchResult, LoadResult } from "../types";
 import { AnimationPlayer } from "./AnimationPlayer";
@@ -125,6 +125,7 @@ function ResultsContent() {
   const loadFlow = useStore((s) => s.loadFlow);
   const shortCircuit = useStore((s) => s.shortCircuit);
   const motorStarting = useStore((s) => s.motorStarting);
+  const arcFlash = useStore((s) => s.arcFlash);
   const validation = useStore((s) => s.validation);
   const explainMode = useStore((s) => s.explainMode);
   const baseMva = useStore((s) => s.baseMva);
@@ -572,6 +573,79 @@ function ResultsContent() {
               ))}
             </tbody>
           </table>
+        </div>
+      </>
+    );
+  }
+
+  if (runMode === "arcflash" && arcFlash) {
+    const af = arcFlash;
+    const toneClass = af.ppeLabel.startsWith("Below") ? "tag-ok" : af.incidentEnergyCal > 8 ? "tag-bad" : "tag-warn";
+    const exportArcFlashCsv = () => {
+      downloadCsv("arcflash-results.csv", [
+        ["Quantity", "Value"],
+        ["Method", af.method],
+        ["Bus", af.busLabel],
+        ["Voltage [kV]", af.voltageKv.toFixed(3)],
+        ["Equipment", af.equipmentClassLabel],
+        ["Electrode config", af.electrodeConfig ?? "n/a (2002)"],
+        ["Gap [mm]", String(af.gapMm)],
+        ["Working distance [mm]", String(af.workingDistanceMm)],
+        ["Bolted fault [kA]", af.boltedKa.toFixed(2)],
+        ["Arcing current [kA]", af.arcingKa.toFixed(2)],
+        ["Clearing time [s]", af.clearingTimeS.toFixed(3)],
+        ["Clearing device", af.clearingSource],
+        ["Incident energy [cal/cm2]", af.incidentEnergyCal.toFixed(2)],
+        ["Arc-flash boundary [mm]", af.arcFlashBoundaryMm.toFixed(0)],
+        ["PPE", af.ppeLabel],
+      ]);
+    };
+    const row = (label: string, value: ReactNode, cls?: string) => (
+      <tr><td>{label}</td><td className={cls}>{value}</td></tr>
+    );
+    return (
+      <>
+        <div className="results-header">
+          <h3>Arc Flash · {af.method}</h3>
+          <div className="results-status">
+            <span className="ok">{af.busLabel} · {af.voltageKv.toFixed(2)} kV</span>
+            <button onClick={exportArcFlashCsv} style={{ fontSize: 11, padding: "1px 8px", marginLeft: 8 }}>
+              Export CSV
+            </button>
+          </div>
+        </div>
+        <div className="results-body">
+          {af.outOfRange && (
+            <div style={{ background: "var(--warn-bg, rgba(251,191,36,0.12))", border: "1px solid var(--warn)", color: "var(--warn)", borderRadius: 6, padding: "8px 12px", marginBottom: 10, fontSize: 12, lineHeight: 1.5 }}>
+              ⚠ {af.voltageKv.toFixed(1)} kV is <strong>above {af.method}'s 15 kV validity limit</strong> — these numbers are an extrapolation. For HV (e.g. 33 kV / 132 kV) the Lee method is the recommended model; treat this result as indicative only.
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+            <div className={`af-badge ${toneClass}`}>
+              <div className="af-cal">{af.incidentEnergyCal.toFixed(1)}<span> cal/cm²</span></div>
+              <div className="af-ppe">{af.ppeLabel}</div>
+            </div>
+            <table className="results-table" style={{ flex: 1, minWidth: 320 }}>
+              <thead><tr><th>Quantity</th><th>Value</th></tr></thead>
+              <tbody>
+                {row("Equipment", af.equipmentClassLabel)}
+                {af.electrodeConfig
+                  ? row("Electrode config", af.electrodeConfig)
+                  : row("Grounding", af.grounded ? "grounded" : "ungrounded")}
+                {row("Bolted fault current", `${af.boltedKa.toFixed(2)} kA`)}
+                {row("Arcing current", `${af.arcingKa.toFixed(2)} kA`)}
+                {row("Clearing time", `${af.clearingTimeS.toFixed(3)} s`, af.clearingSource.startsWith("assumed") ? "tag-warn" : undefined)}
+                {row("Cleared by", af.clearingSource)}
+                {row("Incident energy @ " + af.workingDistanceMm + " mm", `${af.incidentEnergyCal.toFixed(2)} cal/cm²`, toneClass)}
+                {row("Arc-flash boundary", `${af.arcFlashBoundaryMm.toFixed(0)} mm (${(af.arcFlashBoundaryMm / 1000).toFixed(2)} m)`)}
+              </tbody>
+            </table>
+          </div>
+          <p style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.5, marginTop: 8 }}>
+            Incident energy is highly sensitive to clearing time — it scales linearly with it. The arcing
+            current is below the bolted current, so the protective device may operate slower than at a bolted
+            fault. {af.clearingSource.startsWith("assumed") && "No relay was found to clear this bus, so an assumed 2.0 s was used — set up protection for a real number."}
+          </p>
         </div>
       </>
     );

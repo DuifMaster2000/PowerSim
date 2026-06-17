@@ -7,6 +7,8 @@
 import { useState, useEffect } from "react";
 import { useStore, isControlConnection } from "../store";
 import { COMPONENT_LABELS, STARTING_PF_DEFAULTS, STANDARD_FUSE_SIZES_A, CURVE_LABELS, DEFAULT_CT_PARAMS, RELAY_MODELS } from "../defaults";
+import { EQUIPMENT_TYPES } from "../arcFlash";
+import { ELECTRODE_CONFIGS } from "../arcFlash2018";
 import type { PowerComponent, ComponentType, MotorStartingMethod, RelayParams, RelayModel, IdmtCurve } from "../types";
 import { Explain, Info } from "./Explain";
 
@@ -141,6 +143,21 @@ const FIELDS: { [K in ComponentType]: FieldDef[] } = {
   busbar: [
     { key: "nominal_voltage_kv", label: "Nominal voltage", unit: "kV", type: "number", step: 0.1, min: 0.001 },
     { key: "length_px", label: "Bus length", unit: "px", type: "number", step: 20, min: 80, max: 1200 },
+    {
+      key: "arc_equipment_class",
+      label: "Arc-flash equipment",
+      type: "select",
+      options: Object.keys(EQUIPMENT_TYPES),
+      optionLabels: Object.values(EQUIPMENT_TYPES).map((c) => c.label),
+    },
+    {
+      key: "arc_electrode_config",
+      label: "Electrode config (2018)",
+      type: "select",
+      options: Object.keys(ELECTRODE_CONFIGS),
+      optionLabels: Object.values(ELECTRODE_CONFIGS),
+    },
+    { key: "arc_grounded", label: "System grounded (2002)", type: "boolean" },
   ],
   transformer: [
     { key: "rated_mva", label: "Rated", unit: "MVA", type: "number", step: 0.1, min: 0.001 },
@@ -443,6 +460,11 @@ export function PropertiesPanel() {
                     <>
                       <option value="true">Intact</option>
                       <option value="false">Blown</option>
+                    </>
+                  ) : f.key === "arc_grounded" ? (
+                    <>
+                      <option value="true">Grounded</option>
+                      <option value="false">Ungrounded</option>
                     </>
                   ) : comp.type === "relay" ? (
                     <>

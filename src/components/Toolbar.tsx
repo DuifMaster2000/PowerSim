@@ -15,6 +15,9 @@ export function Toolbar() {
   const exportProject = useStore((s) => s.exportProject);
   const runLoadFlow = useStore((s) => s.runLoadFlow);
   const runShortCircuit = useStore((s) => s.runShortCircuit);
+  const runArcFlash = useStore((s) => s.runArcFlash);
+  const arcFlashMethod = useStore((s) => s.arcFlashMethod);
+  const setArcFlashMethod = useStore((s) => s.setArcFlashMethod);
   const runMotorStarting = useStore((s) => s.runMotorStarting);
   const clearResults = useStore((s) => s.clearResults);
   const faultBusId = useStore((s) => s.faultBusId);
@@ -122,7 +125,7 @@ export function Toolbar() {
     <header className="toolbar">
       <div className="brand">
         POWER<span style={{ color: "var(--text)" }}>·SIM</span>
-        <span className="brand-version"> v0.16</span>
+        <span className="brand-version"> v0.18</span>
       </div>
       <button
         className={explainMode ? "pill on" : "pill"}
@@ -220,6 +223,23 @@ export function Toolbar() {
           onClick={() => setShortCircuitCFactor(shortCircuitCFactor === 1.10 ? 1.05 : 1.10)}
         >
           c={shortCircuitCFactor.toFixed(2)}
+        </button>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <button
+          className="primary"
+          onClick={runArcFlash}
+          disabled={!faultBusId}
+          title={!faultBusId ? "Click a busbar first to select the location" : "IEEE 1584 incident energy at the selected bus"}
+        >
+          Run Arc Flash
+        </button>
+        <button
+          title="Arc-flash standard edition: 2018 (electrode configs, enclosure correction) or 2002"
+          style={{ fontSize: 11, padding: "2px 6px", background: "var(--panel-bg)", border: "1px solid var(--border)", color: "var(--accent)", cursor: "pointer", borderRadius: 3 }}
+          onClick={() => setArcFlashMethod(arcFlashMethod === "1584-2018" ? "1584-2002" : "1584-2018")}
+        >
+          {arcFlashMethod}
         </button>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 4 }}>

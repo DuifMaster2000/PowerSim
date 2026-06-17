@@ -301,6 +301,26 @@ A modal sandbox that drives `Relay869ThermalModel` so you can *see* the dynamic 
 - Not persisted to the project file; purely exploratory. RTD bias is wired (per-phase temperature column); the voltage-dependent module is not exposed (experimental).
 - Polish: a self-contained always-on `InfoTip` (fixed-positioned, not clipped by the modal scroll) gives a plain-English `HELP[...]` tooltip on every setting + scenario column; a colour **legend** under the chart (TCU / current / trip / alarm); phase labels are width-culled so they never overlap (wide phases labelled, slivers named only in the table).
 
+### v0.17 — Arc flash (IEEE 1584-2002)
+
+The capstone that ties the short-circuit and protection layers into one deliverable: incident energy + PPE per bus.
+
+- `src/arcFlash.ts` (pure): IEEE 1584-2002 — `arcingCurrentKa` (Eq 1 <1 kV / Eq 2 ≥1 kV), `incidentEnergyCal` (cal/cm² = Cf·En·(t/0.2)·(610/D)^x), `arcFlashBoundaryMm`, `ppeRating` (NFPA 70E categories). `EQUIPMENT_CLASSES` table (gap / distance exponent x / working distance) for 15 kV / 5 kV / LV switchgear, MCC, cable, open-air. **Validated** against the 480 V/20 kA worked example (Ia = 11.22 kA) and the linear-in-time scaling.
+- `BusbarParams` gains optional `arc_equipment_class` (now the equipment **type** — switchgear / MCC / cable / open-air) and `arc_grounded` (legacy `??`). The conductor gap / distance exponent / working distance are selected from the bus's **voltage band** (≤1 kV / >1–5 kV / >5–15 kV) via `resolveEquipment(typeKey, voltageKv)` — IEEE 1584 Table 4. Above 15 kV the result carries `outOfRange` and the panel warns that IEEE 1584-2002 is extrapolated (the Lee method is the correct HV tool, not yet implemented). PropertiesPanel: equipment-type select + Grounded/Ungrounded toggle on busbars.
+- Store: `RunMode` += `"arcflash"`, `arcFlash: ArcFlashResult | null`, `runArcFlash()`. It runs a short circuit at the selected fault bus, computes the arcing current, then **derives the clearing time from protection**: the fastest relay's operate time evaluated at the *arcing* current (each relay's fault current scaled from the bolted bus current by the arcing/bolted ratio — radial approximation), falling back to an assumed 2.0 s (flagged) when nothing operates. The arcing-current subtlety (device operates slower than at a bolted fault) is captured.
+- Toolbar: "Run Arc Flash" button (needs a selected busbar). ResultsPanel: a big cal/cm² badge (tone by PPE), a table (bolted/arcing current, clearing time + device, incident energy, boundary) and CSV export.
+- **Not modelled**: IEEE 1584-2018 (electrode configs, enclosure-size correction); a whole-network arc-flash table (currently the selected bus only); fuse clearing times in the auto-derivation (relays only).
+
+---
+
+### v0.18 — IEEE 1584-2018 arc-flash model
+
+Adds the 2018 edition of arc flash alongside the 2002 model, validated against the standard.
+
+- `src/arcFlash2018.ts` (pure): the full Clause 4 model — five electrode configurations (VCB/VCBB/HCB/VOA/HOA), arcing current / incident energy / arc-flash boundary computed at the 600/2700/14300 V anchors and interpolated (4.9), the ≤600 V path (4.10, Eq 25), enclosure-size correction (Eq 11–15) and arcing-current variation (Eq 2). All coefficients transcribed from Tables 1–5/7; **every equation validated against the Annex D.1 worked example** via `arcFlash2018.harness.ts` (CF=1.284, Iarc=12.979 kA, E=12.152 J/cm², AFB=1606 mm — exact).
+- `resolveEquipment` now also returns the Table 8 enclosure size + shallow flag per class/band, so the 2018 model needs no manual box dimensions.
+- `BusbarParams.arc_electrode_config` (default VCB); `ArcFlashResult` gains `method` + `electrodeConfig`. Store `arcFlashMethod` toggle (default `"1584-2018"`); `runArcFlash` branches on it (arcing current computed first for the clearing-time derivation, then energy). Toolbar method toggle next to Run Arc Flash; ResultsPanel shows the method + electrode config; CSV notes both. The >15 kV out-of-range flag applies to both editions (Lee method still the HV tool).
+
 ---
 
 ## Known limitations / v0.5 candidates
