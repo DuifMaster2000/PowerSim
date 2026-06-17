@@ -20,6 +20,7 @@ import { DEFAULT_PARAMS, COMPONENT_PREFIXES } from "./defaults";
 import { validateProject } from "./validation";
 import { buildNetwork, effectiveStartingCurrentRatio } from "./solver/network";
 import { arcingCurrentKa, incidentEnergyCal, arcFlashBoundaryMm, ppeRating, resolveEquipment, DEFAULT_EQUIPMENT_TYPE } from "./arcFlash";
+import { computeArcFlash2018, type ElectrodeConfig } from "./arcFlash2018";
 import { idmtOperateTime } from "./idmt";
 
 // A connection is a control wire (not part of the power circuit) iff either
@@ -214,6 +215,9 @@ interface State {
   // IEC 60909 voltage factor c (1.10 = max fault, 1.05 = min fault)
   shortCircuitCFactor: 1.05 | 1.10;
 
+  // Arc-flash standard edition.
+  arcFlashMethod: "1584-2018" | "1584-2002";
+
   // Visual: how much detail to show on edge labels after a load flow run.
   edgeReadoutMode: "minimal" | "detailed";
 
@@ -285,6 +289,7 @@ interface State {
   setFrequencyHz: (v: number) => void;
   setProjectName: (n: string) => void;
   setShortCircuitCFactor: (v: 1.05 | 1.10) => void;
+  setArcFlashMethod: (v: "1584-2018" | "1584-2002") => void;
   setEdgeReadoutMode: (v: "minimal" | "detailed") => void;
   setViewport: (v: { x: number; y: number; zoom: number }) => void;
   setExplainMode: (v: boolean) => void;
@@ -373,6 +378,7 @@ const newProjectState = () => ({
   faultBusId: null as string | null,
   startingMotorId: null as string | null,
   shortCircuitCFactor: 1.10 as 1.05 | 1.10,
+  arcFlashMethod: "1584-2018" as "1584-2018" | "1584-2002",
   edgeReadoutMode: "minimal" as "minimal" | "detailed",
   viewport: null as { x: number; y: number; zoom: number } | null,
   projectLoadKey: 0,
@@ -581,6 +587,7 @@ export const useStore = create<State>((set, get) => ({
   setFrequencyHz: (v) => set((s) => ({ ...withHistory(s), frequencyHz: v, isDirty: true })),
   setProjectName: (n) => set({ projectName: n, isDirty: true }),
   setShortCircuitCFactor: (v) => set({ shortCircuitCFactor: v }),
+  setArcFlashMethod: (v) => set({ arcFlashMethod: v }),
   setEdgeReadoutMode: (v) => set({ edgeReadoutMode: v }),
   setViewport: (v) => set({ viewport: v }),
   setExplainMode: (v) => {
@@ -867,8 +874,17 @@ export const useStore = create<State>((set, get) => ({
       const bp = busComp ? (busComp.parameters as BusbarParams) : undefined;
       const eq = resolveEquipment(bp?.arc_equipment_class ?? DEFAULT_EQUIPMENT_TYPE, voltageKv);
       const grounded = bp?.arc_grounded ?? true;
+      const method = get().arcFlashMethod;
+      const config = (bp?.arc_electrode_config ?? "VCB") as ElectrodeConfig;
+      const ec2018 = {
+        config, voltageKv, boltedKa, gapMm: eq.gapMm, workingDistanceMm: eq.workingDistanceMm,
+        enclosureWidthMm: eq.enclosureWidthMm, enclosureHeightMm: eq.enclosureHeightMm, shallow: eq.shallow,
+      };
 
-      const arcingKa = arcingCurrentKa(boltedKa, voltageKv, eq.openAir, eq.gapMm);
+      // Arcing current (independent of clearing time) — by method.
+      const arcingKa = method === "1584-2018"
+        ? computeArcFlash2018({ ...ec2018, clearingTimeS: 0.2 }).arcingKa
+        : arcingCurrentKa(boltedKa, voltageKv, eq.openAir, eq.gapMm);
 
       // Clearing time: the fastest relay that operates at the arcing current.
       // Each relay's fault current is scaled from the bolted bus current by the
@@ -901,13 +917,23 @@ export const useStore = create<State>((set, get) => ({
         }
       }
 
-      const energyInput = {
-        boltedKa, arcingKa, voltageKv,
-        openAir: eq.openAir, grounded, gapMm: eq.gapMm,
-        distanceExponent: eq.distanceExponent, workingDistanceMm: eq.workingDistanceMm,
-        clearingTimeS,
-      };
-      const cal = incidentEnergyCal(energyInput);
+      let cal: number, afbMm: number, outOfRange: boolean;
+      if (method === "1584-2018") {
+        const res = computeArcFlash2018({ ...ec2018, clearingTimeS });
+        cal = res.incidentEnergyCal;
+        afbMm = res.arcFlashBoundaryMm;
+        outOfRange = !res.inRange;
+      } else {
+        const energyInput = {
+          boltedKa, arcingKa, voltageKv,
+          openAir: eq.openAir, grounded, gapMm: eq.gapMm,
+          distanceExponent: eq.distanceExponent, workingDistanceMm: eq.workingDistanceMm,
+          clearingTimeS,
+        };
+        cal = incidentEnergyCal(energyInput);
+        afbMm = arcFlashBoundaryMm(energyInput);
+        outOfRange = !eq.inRange;
+      }
       const ppe = ppeRating(cal);
 
       set({
@@ -919,13 +945,15 @@ export const useStore = create<State>((set, get) => ({
           arcingKa,
           clearingTimeS,
           clearingSource,
+          method: method === "1584-2018" ? "IEEE 1584-2018" : "IEEE 1584-2002",
           equipmentClassLabel: `${eq.typeLabel} · ${eq.bandLabel}`,
+          electrodeConfig: method === "1584-2018" ? config : undefined,
           gapMm: eq.gapMm,
           workingDistanceMm: eq.workingDistanceMm,
           grounded,
-          outOfRange: !eq.inRange,
+          outOfRange,
           incidentEnergyCal: cal,
-          arcFlashBoundaryMm: arcFlashBoundaryMm(energyInput),
+          arcFlashBoundaryMm: afbMm,
           ppeCategory: ppe.category,
           ppeLabel: ppe.label,
         },

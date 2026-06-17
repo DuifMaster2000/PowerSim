@@ -313,6 +313,16 @@ The capstone that ties the short-circuit and protection layers into one delivera
 
 ---
 
+### v0.18 — IEEE 1584-2018 arc-flash model
+
+Adds the 2018 edition of arc flash alongside the 2002 model, validated against the standard.
+
+- `src/arcFlash2018.ts` (pure): the full Clause 4 model — five electrode configurations (VCB/VCBB/HCB/VOA/HOA), arcing current / incident energy / arc-flash boundary computed at the 600/2700/14300 V anchors and interpolated (4.9), the ≤600 V path (4.10, Eq 25), enclosure-size correction (Eq 11–15) and arcing-current variation (Eq 2). All coefficients transcribed from Tables 1–5/7; **every equation validated against the Annex D.1 worked example** via `arcFlash2018.harness.ts` (CF=1.284, Iarc=12.979 kA, E=12.152 J/cm², AFB=1606 mm — exact).
+- `resolveEquipment` now also returns the Table 8 enclosure size + shallow flag per class/band, so the 2018 model needs no manual box dimensions.
+- `BusbarParams.arc_electrode_config` (default VCB); `ArcFlashResult` gains `method` + `electrodeConfig`. Store `arcFlashMethod` toggle (default `"1584-2018"`); `runArcFlash` branches on it (arcing current computed first for the clearing-time derivation, then energy). Toolbar method toggle next to Run Arc Flash; ResultsPanel shows the method + electrode config; CSV notes both. The >15 kV out-of-range flag applies to both editions (Lee method still the HV tool).
+
+---
+
 ## Known limitations / v0.5 candidates
 
 These are the documented gaps, roughly prioritised:

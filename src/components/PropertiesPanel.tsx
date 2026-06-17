@@ -8,6 +8,7 @@ import { useState, useEffect } from "react";
 import { useStore, isControlConnection } from "../store";
 import { COMPONENT_LABELS, STARTING_PF_DEFAULTS, STANDARD_FUSE_SIZES_A, CURVE_LABELS, DEFAULT_CT_PARAMS, RELAY_MODELS } from "../defaults";
 import { EQUIPMENT_TYPES } from "../arcFlash";
+import { ELECTRODE_CONFIGS } from "../arcFlash2018";
 import type { PowerComponent, ComponentType, MotorStartingMethod, RelayParams, RelayModel, IdmtCurve } from "../types";
 import { Explain, Info } from "./Explain";
 
@@ -149,7 +150,14 @@ const FIELDS: { [K in ComponentType]: FieldDef[] } = {
       options: Object.keys(EQUIPMENT_TYPES),
       optionLabels: Object.values(EQUIPMENT_TYPES).map((c) => c.label),
     },
-    { key: "arc_grounded", label: "System grounded", type: "boolean" },
+    {
+      key: "arc_electrode_config",
+      label: "Electrode config (2018)",
+      type: "select",
+      options: Object.keys(ELECTRODE_CONFIGS),
+      optionLabels: Object.values(ELECTRODE_CONFIGS),
+    },
+    { key: "arc_grounded", label: "System grounded (2002)", type: "boolean" },
   ],
   transformer: [
     { key: "rated_mva", label: "Rated", unit: "MVA", type: "number", step: 0.1, min: 0.001 },

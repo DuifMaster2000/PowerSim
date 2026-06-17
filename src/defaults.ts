@@ -119,6 +119,7 @@ export const DEFAULT_PARAMS: { [K in ComponentType]: ParamsByType[K] } = {
     length_px: 200,
     arc_equipment_class: "switchgear",
     arc_grounded: true,
+    arc_electrode_config: "VCB",
   },
   transformer: {
     rated_mva: 1.0,

@@ -584,9 +584,11 @@ function ResultsContent() {
     const exportArcFlashCsv = () => {
       downloadCsv("arcflash-results.csv", [
         ["Quantity", "Value"],
+        ["Method", af.method],
         ["Bus", af.busLabel],
         ["Voltage [kV]", af.voltageKv.toFixed(3)],
         ["Equipment", af.equipmentClassLabel],
+        ["Electrode config", af.electrodeConfig ?? "n/a (2002)"],
         ["Gap [mm]", String(af.gapMm)],
         ["Working distance [mm]", String(af.workingDistanceMm)],
         ["Bolted fault [kA]", af.boltedKa.toFixed(2)],
@@ -604,7 +606,7 @@ function ResultsContent() {
     return (
       <>
         <div className="results-header">
-          <h3>Arc Flash · IEEE 1584-2002</h3>
+          <h3>Arc Flash · {af.method}</h3>
           <div className="results-status">
             <span className="ok">{af.busLabel} · {af.voltageKv.toFixed(2)} kV</span>
             <button onClick={exportArcFlashCsv} style={{ fontSize: 11, padding: "1px 8px", marginLeft: 8 }}>
@@ -615,7 +617,7 @@ function ResultsContent() {
         <div className="results-body">
           {af.outOfRange && (
             <div style={{ background: "var(--warn-bg, rgba(251,191,36,0.12))", border: "1px solid var(--warn)", color: "var(--warn)", borderRadius: 6, padding: "8px 12px", marginBottom: 10, fontSize: 12, lineHeight: 1.5 }}>
-              ⚠ {af.voltageKv.toFixed(1)} kV is <strong>above IEEE 1584-2002's 15 kV validity limit</strong> — these numbers are an extrapolation. For HV (e.g. 33 kV / 132 kV) the Lee method is the recommended model; treat this result as indicative only.
+              ⚠ {af.voltageKv.toFixed(1)} kV is <strong>above {af.method}'s 15 kV validity limit</strong> — these numbers are an extrapolation. For HV (e.g. 33 kV / 132 kV) the Lee method is the recommended model; treat this result as indicative only.
             </div>
           )}
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
@@ -626,7 +628,10 @@ function ResultsContent() {
             <table className="results-table" style={{ flex: 1, minWidth: 320 }}>
               <thead><tr><th>Quantity</th><th>Value</th></tr></thead>
               <tbody>
-                {row("Equipment", `${af.equipmentClassLabel}${af.grounded ? " · grounded" : " · ungrounded"}`)}
+                {row("Equipment", af.equipmentClassLabel)}
+                {af.electrodeConfig
+                  ? row("Electrode config", af.electrodeConfig)
+                  : row("Grounding", af.grounded ? "grounded" : "ungrounded")}
                 {row("Bolted fault current", `${af.boltedKa.toFixed(2)} kA`)}
                 {row("Arcing current", `${af.arcingKa.toFixed(2)} kA`)}
                 {row("Clearing time", `${af.clearingTimeS.toFixed(3)} s`, af.clearingSource.startsWith("assumed") ? "tag-warn" : undefined)}

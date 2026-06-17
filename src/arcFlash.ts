@@ -43,13 +43,18 @@ export interface ResolvedEquipment {
   distanceExponent: number;  // x
   workingDistanceMm: number; // D
   openAir: boolean;
-  inRange: boolean;          // false above 15 kV (outside IEEE 1584-2002 validity)
+  inRange: boolean;          // false above 15 kV (outside IEEE 1584 validity)
+  // IEEE 1584-2018 Table 8 enclosure size (for the 2018 size-correction factor).
+  enclosureWidthMm: number;
+  enclosureHeightMm: number;
+  shallow: boolean;
 }
 
-// Resolve the conductor gap, distance exponent and working distance from the
-// equipment class AND the bus voltage band — IEEE 1584-2002 Table 4. The
-// empirical model is only valid 0.208–15 kV; above 15 kV the highest-band
-// factors are used but inRange is false (the Lee method is the correct tool).
+// Resolve the conductor gap, distance exponent, working distance AND (for the
+// 2018 model) the enclosure size from the equipment class and bus voltage
+// band — IEEE 1584-2002 Table 4 / 2018 Table 8. The empirical model is only
+// valid 0.208–15 kV; above 15 kV the highest-band factors are used but inRange
+// is false (the Lee method is the correct tool).
 export function resolveEquipment(typeKey: string, voltageKv: number): ResolvedEquipment {
   const type = normaliseType(typeKey);
   const inRange = voltageKv <= 15;
@@ -58,22 +63,21 @@ export function resolveEquipment(typeKey: string, voltageKv: number): ResolvedEq
   const bandLabel = band === "lv" ? "≤1 kV" : band === "mv5" ? ">1–5 kV"
     : inRange ? ">5–15 kV" : ">15 kV — outside IEEE 1584 range";
 
-  // [gapMm, x, workingDistanceMm] per type × band (Table 4). MCC and cable are
-  // single-gap classes (predominantly LV); switchgear/open-air vary by band.
-  const t = (gapMm: number, x: number, wd: number, openAir = false): ResolvedEquipment => ({
+  const t = (gapMm: number, x: number, wd: number, openAir: boolean, w: number, h: number, shallow: boolean): ResolvedEquipment => ({
     typeLabel: EQUIPMENT_TYPES[type].label, bandLabel, gapMm, distanceExponent: x, workingDistanceMm: wd, openAir, inRange,
+    enclosureWidthMm: w, enclosureHeightMm: h, shallow,
   });
-  if (type === "cable") return t(13, 2.0, 455);
-  if (type === "mcc_panel") return t(25, 1.641, 455);
+  if (type === "cable") return t(13, 2.0, 455, false, 304.8, 355.6, false);
+  if (type === "mcc_panel") return t(25, 1.641, 455, false, 304.8, 355.6, true);
   if (type === "open_air") {
-    if (band === "lv") return t(10, 2.0, 610, true);
-    if (band === "mv5") return t(40, 2.0, 910, true);
-    return t(95, 2.0, 910, true);
+    if (band === "lv") return t(10, 2.0, 610, true, 508, 508, false);
+    if (band === "mv5") return t(40, 2.0, 910, true, 914.4, 914.4, false);
+    return t(95, 2.0, 910, true, 1143, 1143, false);
   }
-  // switchgear
-  if (band === "lv") return t(32, 1.473, 610);
-  if (band === "mv5") return t(104, 0.973, 910);
-  return t(152, 0.973, 910);
+  // switchgear (enclosure sizes from Table 8: LV 508³, 5 kV 914³, 15 kV 1143×762)
+  if (band === "lv") return t(32, 1.473, 610, false, 508, 508, false);
+  if (band === "mv5") return t(104, 0.973, 910, false, 914.4, 914.4, false);
+  return t(152, 0.973, 910, false, 762, 1143, false);
 }
 
 const lg = (x: number) => Math.log10(x);
