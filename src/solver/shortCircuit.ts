@@ -1,13 +1,22 @@
 // =====================================================================
 // IEC 60909 simplified three-phase short-circuit solver.
 // - Three-phase symmetrical bolted fault only
-// - No impedance correction factors (Kt, Kg) — documented simplification
+// - Transformer impedance correction K_T = 0.95·c/(1+0.6·x_T) is applied
+//   (short-circuit path only). Generator/power-station correction (Kg, Ks)
+//   is still omitted — documented simplification.
 // - Voltage factor c: 1.10 for maximum fault current, 1.05 for minimum
 // =====================================================================
 
-import type { ShortCircuitResult, ShortCircuitContribution, ShortCircuitBranchFlow } from "../types";
+import type {
+  ShortCircuitResult,
+  ShortCircuitContribution,
+  ShortCircuitBranchFlow,
+  ShortCircuitDerivation,
+  ScSourceTerm,
+  ScTransformerTerm,
+} from "../types";
 import type { NetworkModel } from "./network";
-import { buildYBus } from "./network";
+import { buildYBus, transformerKtFactor } from "./network";
 import { invertComplexMatrix, type Complex, cAbs } from "./math";
 
 export function runShortCircuit(
@@ -20,8 +29,9 @@ export function runShortCircuit(
     throw new Error("Invalid fault bus index");
   }
 
-  // Build Y-bus with source impedances ADDED at each source's bus.
-  const { gRe, bIm } = buildYBus(net);
+  // Build Y-bus with source impedances ADDED at each source's bus. The fault
+  // path applies the IEC 60909 transformer correction K_T (load flow does not).
+  const { gRe, bIm } = buildYBus(net, { scCFactor: cFactor });
   for (const src of net.sources) {
     // Y_src = 1 / Z_src
     const r = src.zSrcPu.re;
@@ -185,6 +195,45 @@ export function runShortCircuit(
     });
   }
 
+  // ---- Methodology derivation: capture the intermediate values so the UI can
+  // show exactly how the answer was reached (numbers only — no prose here). ----
+  const sourceTerms: ScSourceTerm[] = net.sources.map((src) => ({
+    label: src.label,
+    shortCircuitMva: src.shortCircuitMva,
+    xrRatio: src.xrRatio,
+    rPu: src.zSrcPu.re,
+    xPu: src.zSrcPu.im,
+    zMagPu: cAbs(src.zSrcPu),
+    contributionKa: contributions.find((c) => c.sourceId === src.componentId)?.currentKa ?? 0,
+  }));
+  const transformerTerms: ScTransformerTerm[] = net.branches
+    .filter((b) => b.componentType === "transformer")
+    .map((b) => ({
+      label: b.label,
+      ratedMva: b.ratedMva ?? 0,
+      xTpu: b.xTpu ?? 0,
+      ktFactor: transformerKtFactor(b.xTpu ?? 0, cFactor),
+    }));
+
+  const derivation: ShortCircuitDerivation = {
+    standard: "IEC 60909-0 (simplified, 3-phase symmetrical)",
+    faultBusLabel: faultBus.label,
+    cFactor,
+    baseMva: net.baseMva,
+    baseKv: faultBus.baseKv,
+    baseCurrentA: Ibase,
+    sources: sourceTerms,
+    transformers: transformerTerms,
+    zThevRePu: zkk_re,
+    zThevImPu: zkk_im,
+    zThevMagPu: zkk_mag,
+    xrAtFault,
+    ikPu: Ipu,
+    ikSymKa,
+    kappa,
+    ipPeakKa,
+  };
+
   return {
     faultBusId: faultBus.id,
     faultBusLabel: faultBus.label,
@@ -192,5 +241,6 @@ export function runShortCircuit(
     ipPeakKa,
     contributions,
     branchFlows,
+    derivation,
   };
 }

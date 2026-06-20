@@ -22,6 +22,7 @@ npm run dev        # starts Vite on http://localhost:5000
 ```
 
 Type-check without building: `npx tsc --noEmit`
+Run the test suite: `npm test` (Vitest, runs once) — or `npm run test:watch`
 
 ---
 
@@ -323,20 +324,73 @@ Adds the 2018 edition of arc flash alongside the 2002 model, validated against t
 
 ---
 
+### v0.19 — Test suite (Vitest) + refreshed example networks
+
+First automated regression net for the pure layers, plus example networks rebuilt at real workplace voltages.
+
+- **Vitest** added (`npm test` runs once, `npm run test:watch` for the loop). `vitest.config.ts` runs a Node environment over `src/**/*.test.ts` — the solver / `idmt` / `arcFlash` / `protection` layers are React-free, so no jsdom is needed. 78 tests across 9 files; `npx tsc --noEmit` covers the test files too.
+- **Example-network baselines** (the core of this pass): every bundled example is loaded, solved and checked — load-flow convergence + a flat-1.0 pu slack + per-bus voltage baselines (±1e-3 pu); IEC 60909 fault levels (the source-bus values double as exact hand-checks, `I_k" = c·S_sc/(√3·kV)`); and DOL motor-start terminal voltage / dip, including the constant-impedance `I ≈ LRC·FLC·V` relationship. Baselines were captured from the current solver and locked in, so any future change that shifts a result is flagged.
+- **Pure-function tests**: complex arithmetic + Gaussian / complex-matrix inversion (`math.ts`); IDMT / IEEE / ABB-RI / DT operate times + multi-stage "fastest stage wins" (`idmt.ts`); `effectiveStartingCurrentRatio`; base-kV propagation through the transformer chain.
+- **Standards regression**: the two ad-hoc `*.harness.ts` scripts are now real tests — GE 869 Standard curve (29.16 / 10.93 / 3.64 s at TDM 1) and IEEE 1584-2018 Annex D.1 (CF 1.284, Iarc 12.979 kA, E 12.152 J/cm², AFB 1606 mm). The harness files remain for interactive runs.
+- **Refreshed examples** (`src/examples/`): the five originals predated cables / breakers / CTs, so they're replaced with workplace-voltage networks (132 / 33 / 11 / 6.6 / 0.525 kV), each with cables, breakers and CTs (relays where protection is the point):
+  1. *Grid intake — 132/33 kV*: radial hello-world with an incomer breaker, CT and relay.
+  2. *Primary substation — 33/11 kV*: graded relay-feeder + fuse-feeder for the grading study.
+  3. *MV motor feeder — 11/6.6 kV*: 2.5 MW DOL motor with a GE-869 relay (motor-start + thermal).
+  4. *Ring main — 33 kV + embedded gen*: closed ring with a PV-bus generator; meshed → multi-iteration (animation).
+  5. *Full plant — 132 kV to 525 V*: ≈20 components spanning all five levels; exercises every study.
+- Addresses backlog item #8.
+
+---
+
+### v0.20 — IEC 60909 transformer impedance correction (K_T)
+
+The short-circuit solver now applies the IEC 60909 transformer correction factor.
+
+- `K_T = 0.95 · c / (1 + 0.6 · x_T)`, where `x_T` is the transformer's reactance on its **own** rating. The corrected impedance `Z·K_T` (admittance `Y/K_T`) is used for the fault calculation only — **load flow and motor starting keep the true impedance**.
+- `transformerKtFactor(xTpu, cMax)` is a pure export in `solver/network.ts`; `BranchModel.xTpu` carries each transformer's own-base reactance. `buildYBus(net, { scCFactor })` applies the correction only when the short-circuit c-factor is passed — `shortCircuit.ts` passes the active c (the toolbar toggle), `loadFlow.ts` passes nothing. Generator / power-station corrections (Kg, Ks) remain out of scope.
+- Effect depends on c and x_T: `K_T < 1` for medium/high-impedance transformers (raises the downstream fault level), slightly `> 1` for low-impedance units. On the example transformers it shifts downstream fault currents by ~1–3 %; **source-bus faults — no transformer in the path — are unchanged.** Short-circuit baselines updated and dedicated K_T mechanism tests added.
+- Addresses backlog item #1.
+
+---
+
+### v0.21 — Short-circuit methodology window
+
+A "show your working" view for the short-circuit study — built to reassure reviewers/commercial users that the IEC 60909 answer is traceable, step by step, with the run's actual numbers.
+
+- **Button**: the short-circuit results header gains a **Methodology** button (next to Export CSV) → opens a document-style modal.
+- **Data (solver → UI, layering preserved)**: `runShortCircuit` now attaches a `ShortCircuitDerivation` to `ShortCircuitResult` — *numbers only*: per-unit base + base current, each source's Z (from S″_k and X/R) + contribution, every transformer's `x_T` and the `K_T` actually used, the Thévenin `Z_kk` (re/im/|Z|/ X-R) at the fault bus, `I″k = c/|Z_kk|` → kA, and `κ` + `i_p`. The UI component wraps these in prose + equations, so the solver stays presentation-free.
+- **Component**: `src/components/ShortCircuitMethodology.tsx` (modal, mounted in `App.tsx`). Sections 1–7: per-unit base → source Z → transformer Z & K_T → Y-bus/Z-bus reduction → `I″k` → `i_p` → **assumptions & limitations** (bolted 3-phase only, equivalent voltage source, K_T applied / Kg–Ks not, radial contribution approximation, "educational tool, not a verified compliance study").
+- **Print / PDF**: a Print button + `@media print` rules render just the methodology page on white for saving to PDF / records.
+- **Store**: view-only `methodologyOpen` + `openMethodology` / `closeMethodology` (mirrors `glossaryOpen`); Esc / backdrop close.
+- Scope: **short-circuit only** for now — load flow / motor start / arc flash could follow the same derivation pattern later.
+
+---
+
+### v0.22 — Arc-flash methodology window
+
+Extends the v0.21 "show your working" pattern to the arc-flash study (both IEEE 1584 editions).
+
+- **Button**: the arc-flash results header gains a **Methodology** button (next to Export CSV) → document-style modal.
+- **Data**: `runArcFlash` attaches an `ArcFlashDerivation` to `ArcFlashResult` — only the *extra* intermediates not already on the result (the SC c-factor used for the bolted current, the arcing/bolted ratio, the distance exponent x, whether the 2.0 s clearing time was assumed, plus 2002's `C_f` & `E_n` or 2018's enclosure correction `CF`). The component reads the headline values (bolted / arcing / energy / AFB / PPE, gap, working distance, method, electrode config) straight off `ArcFlashResult`. `arcFlash.ts` now exports `normalizedEnergy` for the 2002 worked energy.
+- **Component**: `src/components/ArcFlashMethodology.tsx` (modal, mounted in `App.tsx`). Sections 1–8: equipment & geometry → bolted fault → arcing current (Eq 1/2 for 2002, anchor interpolation for 2018) → clearing time from protection (the arcing < bolted subtlety; **relays only**) → incident energy (Eq 4/5 worked for 2002; CF-corrected anchors for 2018) → arc-flash boundary → PPE (NFPA 70E) → **assumptions & limitations** (relay-only clearing, selected bus only, >15 kV out-of-range → Lee). Print/PDF reuses the `@media print` rules.
+- **Store**: view-only `arcFlashMethodologyOpen` + `openArcFlashMethodology` / `closeArcFlashMethodology` (mirrors `methodologyOpen`); Esc / backdrop close. The section text adapts to the active method (2002 / 2018).
+
+---
+
 ## Known limitations / v0.5 candidates
 
 These are the documented gaps, roughly prioritised:
 
 | # | Area | What's missing | Notes |
 |---|------|----------------|-------|
-| 1 | Solver | IEC 60909 **Kt correction factor** for transformers | K_T = c / (1 + 0.6·x_T) approx; results ~5–10% optimistic without it |
+| 1 | Solver | IEC 60909 **Kt correction factor** for transformers | ✅ Done (v0.20) — `K_T = 0.95·c/(1+0.6·x_T)` on the SC path. Generator/power-station Kg, Ks still pending. |
 | 2 | Solver | **Relative pivot tolerance** in `math.ts` Gaussian elim (line ~81) | Currently absolute `1e-14`; should scale to max element × 1e-10 |
 | 3 | Solver | **Q limits** on PV buses | PV buses currently inject unlimited Q; real sources have reactive limits |
 | 4 | Results | **Voltage band customisation** | Hard-coded 0.9/0.95/1.05/1.1 pu thresholds |
 | 5 | Results | **Comparison mode** | Run, tweak, re-run — keep previous results alongside new ones |
 | 6 | Export | **Export diagram as SVG/PNG** | Canvas screenshot |
 | 7 | Symbols | **More IEC symbols** | Generator (distinct from grid source), capacitor bank, harmonic filter |
-| 8 | Architecture | **Unit tests for solver** | `solver/` is React-free — easy to add Vitest tests; none exist yet |
+| 8 | Architecture | **Unit tests for solver** | ✅ Done (v0.19) — Vitest suite (78 tests): solver + idmt + arc flash + per-example baselines. More coverage always welcome. |
 | 9 | UI | **Duplicate with connections** | Current `duplicateComponent` clones the component only; could optionally clone its incident wires |
 | 10 | Motor start | **Acceleration time / torque-speed curve** | v0.4 models the worst-instant inrush only; no run-up integration or motor-vs-load torque modelling |
 | 11 | Motor start | **Simultaneous starting of multiple motors** | One motor at a time; group-start studies need manual scenario runs |

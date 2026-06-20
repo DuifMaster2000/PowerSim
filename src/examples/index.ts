@@ -1,15 +1,18 @@
 // =====================================================================
 // Bundled example networks. Each is a complete ProjectFile that loads
-// straight into the store via loadProject. Drag-drop the Examples
-// menu in the Toolbar to pick one.
+// straight into the store via loadProject. Pick one from the Examples
+// menu in the Toolbar.
+//
+// All five use the voltage levels found on a real distribution system
+// (132 / 33 / 11 / 6.6 / 0.525 kV) and include cables, breakers and CTs.
 // =====================================================================
 
 import type { ProjectFile } from "../types";
-import { radial2Bus } from "./01-radial-2bus";
-import { threeBusPv } from "./02-three-bus-pv";
-import { motorStartMv } from "./03-motor-start-mv";
-import { meshLoop } from "./04-mesh-loop";
-import { industrialPlant } from "./05-industrial-plant";
+import { gridIntake132_33 } from "./01-grid-intake-132-33";
+import { primarySubstation33_11 } from "./02-primary-substation-33-11";
+import { motorFeeder66 } from "./03-motor-feeder-66";
+import { ringMain33 } from "./04-ring-main-33";
+import { fullPlant132_525 } from "./05-full-plant-132-525";
 
 export interface ExampleEntry {
   id: string;
@@ -20,33 +23,33 @@ export interface ExampleEntry {
 
 export const EXAMPLES: ExampleEntry[] = [
   {
-    id: "radial-2bus",
-    name: "Radial — 2 bus",
-    description: "Grid → 11 kV bus → transformer → 0.4 kV bus → load. Hello-world.",
-    file: radial2Bus,
+    id: "grid-intake-132-33",
+    name: "Grid intake — 132/33 kV",
+    description: "132 kV grid → incomer breaker (CT + relay) → 132/33 transformer → 33 kV feeder. Hello-world.",
+    file: gridIntake132_33,
   },
   {
-    id: "three-bus-pv",
-    name: "Three-bus PV",
-    description: "Two grid sources — second acts as a PV bus with scheduled MW.",
-    file: threeBusPv,
+    id: "primary-substation-33-11",
+    name: "Primary substation — 33/11 kV",
+    description: "Graded protection: incomer relay + relay-protected and fuse-protected 11 kV feeders. Good for the grading study.",
+    file: primarySubstation33_11,
   },
   {
-    id: "motor-start-mv",
-    name: "Motor starting (MV)",
-    description: "11 kV grid, transformer to LV, DOL motor for inrush analysis.",
-    file: motorStartMv,
+    id: "motor-feeder-66",
+    name: "MV motor feeder — 11/6.6 kV",
+    description: "11/6.6 kV transformer feeding a 2.5 MW 6.6 kV motor with a GE-869 relay. For motor starting + motor protection.",
+    file: motorFeeder66,
   },
   {
-    id: "mesh-loop",
-    name: "Mesh loop (3 cables)",
-    description: "Ring topology — Newton-Raphson takes 4–5 iters. Good for animation.",
-    file: meshLoop,
+    id: "ring-main-33",
+    name: "Ring main — 33 kV + embedded gen",
+    description: "Closed 33 kV ring with an embedded generator (PV bus). Meshed — Newton-Raphson takes several iterations.",
+    file: ringMain33,
   },
   {
-    id: "industrial-plant",
-    name: "Industrial plant",
-    description: "≈15 components — incomer, MV bus, two outgoing feeders.",
-    file: industrialPlant,
+    id: "full-plant-132-525",
+    name: "Full plant — 132 kV to 525 V",
+    description: "≈20 components spanning 132 / 33 / 11 / 6.6 / 0.525 kV — intake, motor board and LV board. Exercises every study.",
+    file: fullPlant132_525,
   },
 ];

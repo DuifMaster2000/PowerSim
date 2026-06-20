@@ -124,6 +124,8 @@ function ResultsContent() {
   const runMode = useStore((s) => s.runMode);
   const loadFlow = useStore((s) => s.loadFlow);
   const shortCircuit = useStore((s) => s.shortCircuit);
+  const openMethodology = useStore((s) => s.openMethodology);
+  const openArcFlashMethodology = useStore((s) => s.openArcFlashMethodology);
   const motorStarting = useStore((s) => s.motorStarting);
   const arcFlash = useStore((s) => s.arcFlash);
   const validation = useStore((s) => s.validation);
@@ -536,6 +538,13 @@ function ResultsContent() {
           <div className="results-status">
             <span className="ok">FAULT AT {shortCircuit.faultBusLabel}</span>
             <button
+              onClick={openMethodology}
+              style={{ fontSize: 11, padding: "1px 8px", marginLeft: 8 }}
+              title="Show the full IEC 60909 methodology — every step from impedances to the fault current"
+            >
+              Methodology
+            </button>
+            <button
               onClick={exportShortCircuitCsv}
               style={{ fontSize: 11, padding: "1px 8px", marginLeft: 8 }}
             >
@@ -609,6 +618,13 @@ function ResultsContent() {
           <h3>Arc Flash · {af.method}</h3>
           <div className="results-status">
             <span className="ok">{af.busLabel} · {af.voltageKv.toFixed(2)} kV</span>
+            <button
+              onClick={openArcFlashMethodology}
+              style={{ fontSize: 11, padding: "1px 8px", marginLeft: 8 }}
+              title="Show the full IEEE 1584 methodology — every step from the bolted fault to PPE"
+            >
+              Methodology
+            </button>
             <button onClick={exportArcFlashCsv} style={{ fontSize: 11, padding: "1px 8px", marginLeft: 8 }}>
               Export CSV
             </button>

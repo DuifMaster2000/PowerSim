@@ -324,6 +324,47 @@ export interface ShortCircuitResult {
   ipPeakKa: number; // i_p — peak short-circuit current
   contributions: ShortCircuitContribution[];
   branchFlows: ShortCircuitBranchFlow[];
+  derivation?: ShortCircuitDerivation; // step-by-step worked numbers for the methodology view
+}
+
+// ---------- Short-circuit methodology (the "how we got the answer" data) ----------
+// The solver attaches the intermediate values; the methodology UI wraps them in
+// prose + equations. Keeping this as raw numbers preserves the layering rule.
+
+export interface ScSourceTerm {
+  label: string;
+  shortCircuitMva: number;
+  xrRatio: number;
+  rPu: number;       // source resistance, pu on system base
+  xPu: number;       // source reactance, pu on system base
+  zMagPu: number;    // |Z_src|, pu
+  contributionKa: number;
+}
+
+export interface ScTransformerTerm {
+  label: string;
+  ratedMva: number;
+  xTpu: number;      // reactance on the transformer's own rating (the x_T in K_T)
+  ktFactor: number;  // IEC 60909 K_T at this run's c-factor
+}
+
+export interface ShortCircuitDerivation {
+  standard: string;          // e.g. "IEC 60909-0 (simplified, 3-phase symmetrical)"
+  faultBusLabel: string;
+  cFactor: number;           // voltage factor c used
+  baseMva: number;
+  baseKv: number;            // base voltage at the fault bus
+  baseCurrentA: number;      // I_base = baseMVA / (√3 · baseKv)
+  sources: ScSourceTerm[];
+  transformers: ScTransformerTerm[]; // every transformer in the model (K_T applied to SC)
+  zThevRePu: number;         // Thevenin impedance at the fault bus (Z_kk)
+  zThevImPu: number;
+  zThevMagPu: number;
+  xrAtFault: number;         // X/R at the fault bus
+  ikPu: number;              // c / |Z_kk|
+  ikSymKa: number;
+  kappa: number;             // peak factor κ
+  ipPeakKa: number;
 }
 
 // ---------- Arc flash (IEEE 1584) ----------
@@ -347,6 +388,20 @@ export interface ArcFlashResult {
   arcFlashBoundaryMm: number;
   ppeCategory: number | null;
   ppeLabel: string;
+  derivation?: ArcFlashDerivation; // worked intermediates for the methodology view
+}
+
+// Extra intermediate values for the arc-flash methodology view (the headline
+// numbers already live on ArcFlashResult). Assembled where the clearing time
+// is derived from protection.
+export interface ArcFlashDerivation {
+  scCFactor: number;            // IEC 60909 voltage factor used for the bolted current
+  arcingRatio: number;          // I_arc / I_bolted
+  distanceExponent: number;     // x — working-distance exponent (IEEE 1584-2002 Table 4)
+  assumedClearingTime: boolean; // true → no protective device operated, 2.0 s assumed
+  calcFactorCf?: number;        // C_f calculation factor (1.5 ≤1 kV, else 1.0) — 2002
+  normalizedEnergyJ?: number;   // E_n normalized energy (J/cm² at 0.2 s & 610 mm) — 2002
+  enclosureCorrection?: number; // enclosure-size correction factor CF — 2018
 }
 
 // ---------- Validation ----------

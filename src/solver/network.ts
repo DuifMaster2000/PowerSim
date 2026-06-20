@@ -46,6 +46,7 @@ export interface BranchModel {
   ratedMva?: number; // for loading % calculation (transformer rated MVA)
   componentType: "transformer" | "cable" | "switch";
   fromKvBase?: number; // base kV at the from-bus (for current conversion)
+  xTpu?: number; // transformer reactance on its OWN rating — IEC 60909 K_T correction (short circuit only)
 }
 
 export interface BusModel {
@@ -379,6 +380,9 @@ export function buildNetwork(
       yPu: cInv(C(r, x)),
       ratedMva: p.rated_mva,
       componentType: "transformer",
+      // Relative reactance on the transformer's own rating (independent of the
+      // system base) — the x_T used by the IEC 60909 K_T correction.
+      xTpu: (p.impedance_percent / 100) * (p.xr_ratio / Math.sqrt(1 + p.xr_ratio * p.xr_ratio)),
     });
   }
   for (const ct of cableTopo) {
@@ -521,26 +525,51 @@ export function buildNetwork(
 }
 
 /**
+ * IEC 60909 transformer impedance correction factor K_T for a two-winding
+ * network transformer:  K_T = 0.95 · c_max / (1 + 0.6 · x_T), where x_T is the
+ * transformer's per-unit reactance on its own rating. The corrected impedance
+ * Z·K_T is used for short-circuit only — load flow keeps the true impedance.
+ * cMax is the short-circuit voltage factor in use (the toolbar c toggle).
+ */
+export function transformerKtFactor(xTpu: number, cMax: number): number {
+  return (0.95 * cMax) / (1 + 0.6 * xTpu);
+}
+
+/**
  * Build the Y-bus admittance matrix (real and imaginary parts) for the network.
  * Source impedances are NOT added here — they're added separately for fault analysis.
+ *
+ * When `scCFactor` is given (short-circuit path), transformer impedances are
+ * scaled by the IEC 60909 K_T factor (Z·K_T → Y/K_T). Omitting it (load flow)
+ * leaves every branch at its true admittance.
  */
-export function buildYBus(net: NetworkModel): { gRe: number[][]; bIm: number[][] } {
+export function buildYBus(
+  net: NetworkModel,
+  opts: { scCFactor?: number } = {},
+): { gRe: number[][]; bIm: number[][] } {
   const n = net.buses.length;
   const gRe: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
   const bIm: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
   for (const br of net.branches) {
+    let yRe = br.yPu.re;
+    let yIm = br.yPu.im;
+    if (opts.scCFactor !== undefined && br.componentType === "transformer" && br.xTpu !== undefined) {
+      const kt = transformerKtFactor(br.xTpu, opts.scCFactor);
+      yRe = br.yPu.re / kt;
+      yIm = br.yPu.im / kt;
+    }
     const i = br.fromBus;
     const j = br.toBus;
     // Off-diagonals: -y
-    gRe[i][j] -= br.yPu.re;
-    gRe[j][i] -= br.yPu.re;
-    bIm[i][j] -= br.yPu.im;
-    bIm[j][i] -= br.yPu.im;
+    gRe[i][j] -= yRe;
+    gRe[j][i] -= yRe;
+    bIm[i][j] -= yIm;
+    bIm[j][i] -= yIm;
     // Diagonals: +y
-    gRe[i][i] += br.yPu.re;
-    gRe[j][j] += br.yPu.re;
-    bIm[i][i] += br.yPu.im;
-    bIm[j][j] += br.yPu.im;
+    gRe[i][i] += yRe;
+    gRe[j][j] += yRe;
+    bIm[i][i] += yIm;
+    bIm[j][j] += yIm;
   }
   // Bus shunt admittances (e.g. a starting motor's locked-rotor impedance)
   // add to the diagonal only.
