@@ -1111,6 +1111,17 @@ table.results-table td:first-child, table.results-table th:first-child {
 }
 .method-list { font-size: 12.5px; line-height: 1.6; margin: 6px 0; padding-left: 18px; }
 .method-list li { margin: 4px 0; }
+.method-warn {
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid var(--warn);
+  color: var(--warn);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 10px 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.method-warntext { color: var(--warn); }
 
 @media print {
   body * { visibility: hidden; }
@@ -1138,8 +1149,10 @@ table.results-table td:first-child, table.results-table th:first-child {
   .method-intro,
   .method-table th,
   .method-table td,
+  .method-warntext,
   .method-list { color: #000; }
   .method-eq { background: #f3f3f3; color: #000; }
+  .method-warn { background: #f8f0d0; border-color: #999; color: #000; }
   .method-header { position: static; border-color: #999; }
   .method-header-actions { display: none; }
 }

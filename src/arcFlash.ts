@@ -100,7 +100,7 @@ export function arcingCurrentKa(boltedKa: number, voltageKv: number, openAir: bo
 }
 
 // Normalized incident energy En (J/cm² at 0.2 s, 610 mm) — IEEE 1584-2002 Eq 3.
-function normalizedEnergy(arcingKa: number, openAir: boolean, grounded: boolean, gapMm: number): number {
+export function normalizedEnergy(arcingKa: number, openAir: boolean, grounded: boolean, gapMm: number): number {
   const k1 = openAir ? -0.792 : -0.555;   // config
   const k2 = grounded ? -0.113 : 0;        // grounding
   return Math.pow(10, k1 + k2 + 1.081 * lg(arcingKa) + 0.0011 * gapMm);

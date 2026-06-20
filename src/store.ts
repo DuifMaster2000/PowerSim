@@ -19,7 +19,7 @@ import type { CtParams, RelayParams, MotorParams, BusbarParams } from "./types";
 import { DEFAULT_PARAMS, COMPONENT_PREFIXES } from "./defaults";
 import { validateProject } from "./validation";
 import { buildNetwork, effectiveStartingCurrentRatio } from "./solver/network";
-import { arcingCurrentKa, incidentEnergyCal, arcFlashBoundaryMm, ppeRating, resolveEquipment, DEFAULT_EQUIPMENT_TYPE } from "./arcFlash";
+import { arcingCurrentKa, incidentEnergyCal, arcFlashBoundaryMm, ppeRating, resolveEquipment, normalizedEnergy, DEFAULT_EQUIPMENT_TYPE } from "./arcFlash";
 import { computeArcFlash2018, type ElectrodeConfig } from "./arcFlash2018";
 import { idmtOperateTime } from "./idmt";
 
@@ -235,9 +235,10 @@ interface State {
   explainMode: boolean;
   glossaryOpen: boolean;
 
-  // Short-circuit methodology window (how the IEC 60909 answer was derived).
+  // Methodology windows (how the IEC 60909 / IEEE 1584 answers were derived).
   // View-only: not part of the project file or undo history.
   methodologyOpen: boolean;
+  arcFlashMethodologyOpen: boolean;
 
   // GE 869 thermal scenario modeler (a self-contained sandbox window).
   // View-only: not part of the project file or undo history.
@@ -300,6 +301,8 @@ interface State {
   setGlossaryOpen: (v: boolean) => void;
   openMethodology: () => void;
   closeMethodology: () => void;
+  openArcFlashMethodology: () => void;
+  closeArcFlashMethodology: () => void;
   openThermalModeler: (seed: { fla: number; ol: number; tdm: number }) => void;
   closeThermalModeler: () => void;
   setAnimationIter: (i: number) => void;
@@ -400,6 +403,7 @@ export const useStore = create<State>((set, get) => ({
   explainMode: readExplainModePref(),
   glossaryOpen: false,
   methodologyOpen: false,
+  arcFlashMethodologyOpen: false,
   thermalModelerOpen: false,
   thermalModelerSeed: null,
   animationIter: 0,
@@ -604,6 +608,8 @@ export const useStore = create<State>((set, get) => ({
   setGlossaryOpen: (v) => set({ glossaryOpen: v }),
   openMethodology: () => set({ methodologyOpen: true }),
   closeMethodology: () => set({ methodologyOpen: false }),
+  openArcFlashMethodology: () => set({ arcFlashMethodologyOpen: true }),
+  closeArcFlashMethodology: () => set({ arcFlashMethodologyOpen: false }),
   openThermalModeler: (seed) => set({ thermalModelerOpen: true, thermalModelerSeed: seed }),
   closeThermalModeler: () => set({ thermalModelerOpen: false }),
   setAnimationIter: (i) => set({ animationIter: i }),
@@ -927,11 +933,15 @@ export const useStore = create<State>((set, get) => ({
       }
 
       let cal: number, afbMm: number, outOfRange: boolean;
+      let calcFactorCf: number | undefined;
+      let normalizedEnergyJ: number | undefined;
+      let enclosureCorrection: number | undefined;
       if (method === "1584-2018") {
         const res = computeArcFlash2018({ ...ec2018, clearingTimeS });
         cal = res.incidentEnergyCal;
         afbMm = res.arcFlashBoundaryMm;
         outOfRange = !res.inRange;
+        enclosureCorrection = res.correctionFactor;
       } else {
         const energyInput = {
           boltedKa, arcingKa, voltageKv,
@@ -942,6 +952,8 @@ export const useStore = create<State>((set, get) => ({
         cal = incidentEnergyCal(energyInput);
         afbMm = arcFlashBoundaryMm(energyInput);
         outOfRange = !eq.inRange;
+        calcFactorCf = voltageKv <= 1 ? 1.5 : 1.0;
+        normalizedEnergyJ = normalizedEnergy(arcingKa, eq.openAir, grounded, eq.gapMm);
       }
       const ppe = ppeRating(cal);
 
@@ -965,6 +977,15 @@ export const useStore = create<State>((set, get) => ({
           arcFlashBoundaryMm: afbMm,
           ppeCategory: ppe.category,
           ppeLabel: ppe.label,
+          derivation: {
+            scCFactor: get().shortCircuitCFactor,
+            arcingRatio: ratio,
+            distanceExponent: eq.distanceExponent,
+            assumedClearingTime: !isFinite(fastest),
+            calcFactorCf,
+            normalizedEnergyJ,
+            enclosureCorrection,
+          },
         },
         runMode: "arcflash",
       });

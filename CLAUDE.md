@@ -366,6 +366,17 @@ A "show your working" view for the short-circuit study — built to reassure rev
 
 ---
 
+### v0.22 — Arc-flash methodology window
+
+Extends the v0.21 "show your working" pattern to the arc-flash study (both IEEE 1584 editions).
+
+- **Button**: the arc-flash results header gains a **Methodology** button (next to Export CSV) → document-style modal.
+- **Data**: `runArcFlash` attaches an `ArcFlashDerivation` to `ArcFlashResult` — only the *extra* intermediates not already on the result (the SC c-factor used for the bolted current, the arcing/bolted ratio, the distance exponent x, whether the 2.0 s clearing time was assumed, plus 2002's `C_f` & `E_n` or 2018's enclosure correction `CF`). The component reads the headline values (bolted / arcing / energy / AFB / PPE, gap, working distance, method, electrode config) straight off `ArcFlashResult`. `arcFlash.ts` now exports `normalizedEnergy` for the 2002 worked energy.
+- **Component**: `src/components/ArcFlashMethodology.tsx` (modal, mounted in `App.tsx`). Sections 1–8: equipment & geometry → bolted fault → arcing current (Eq 1/2 for 2002, anchor interpolation for 2018) → clearing time from protection (the arcing < bolted subtlety; **relays only**) → incident energy (Eq 4/5 worked for 2002; CF-corrected anchors for 2018) → arc-flash boundary → PPE (NFPA 70E) → **assumptions & limitations** (relay-only clearing, selected bus only, >15 kV out-of-range → Lee). Print/PDF reuses the `@media print` rules.
+- **Store**: view-only `arcFlashMethodologyOpen` + `openArcFlashMethodology` / `closeArcFlashMethodology` (mirrors `methodologyOpen`); Esc / backdrop close. The section text adapts to the active method (2002 / 2018).
+
+---
+
 ## Known limitations / v0.5 candidates
 
 These are the documented gaps, roughly prioritised:

@@ -388,6 +388,20 @@ export interface ArcFlashResult {
   arcFlashBoundaryMm: number;
   ppeCategory: number | null;
   ppeLabel: string;
+  derivation?: ArcFlashDerivation; // worked intermediates for the methodology view
+}
+
+// Extra intermediate values for the arc-flash methodology view (the headline
+// numbers already live on ArcFlashResult). Assembled where the clearing time
+// is derived from protection.
+export interface ArcFlashDerivation {
+  scCFactor: number;            // IEC 60909 voltage factor used for the bolted current
+  arcingRatio: number;          // I_arc / I_bolted
+  distanceExponent: number;     // x — working-distance exponent (IEEE 1584-2002 Table 4)
+  assumedClearingTime: boolean; // true → no protective device operated, 2.0 s assumed
+  calcFactorCf?: number;        // C_f calculation factor (1.5 ≤1 kV, else 1.0) — 2002
+  normalizedEnergyJ?: number;   // E_n normalized energy (J/cm² at 0.2 s & 610 mm) — 2002
+  enclosureCorrection?: number; // enclosure-size correction factor CF — 2018
 }
 
 // ---------- Validation ----------

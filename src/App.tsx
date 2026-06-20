@@ -10,6 +10,7 @@ import { ResultsPanel } from "./components/ResultsPanel";
 import { GlossaryDrawer } from "./components/GlossaryDrawer";
 import { ThermalModeler } from "./components/ThermalModeler";
 import { ShortCircuitMethodology } from "./components/ShortCircuitMethodology";
+import { ArcFlashMethodology } from "./components/ArcFlashMethodology";
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
       <GlossaryDrawer />
       <ThermalModeler />
       <ShortCircuitMethodology />
+      <ArcFlashMethodology />
     </div>
   );
 }
